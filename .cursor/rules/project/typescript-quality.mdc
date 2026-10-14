@@ -1,0 +1,15 @@
+---
+description: TypeScript strict et validation des frontières, adapté d'Altiora et landing-website
+globs: "src/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Qualité TypeScript
+
+- Garder strict et noUncheckedIndexedAccess. Utiliser unknown pour les entrées non fiables.
+- Inférer les contrats depuis Zod et oRPC ; ne pas dupliquer leurs types.
+- Ni any, ni double assertion ou suppression pour masquer une incompatibilité.
+- Préférer unions discriminées, satisfies et retours anticipés.
+- Garder types et logique proches de leur usage, extraire seulement si utile.
+- Ne pas masquer une erreur par un succès de secours ou un catch vide.
+- Valider les données externes avec Zod au serveur ; une assertion ne valide rien.

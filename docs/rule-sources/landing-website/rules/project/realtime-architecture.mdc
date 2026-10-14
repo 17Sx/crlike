@@ -1,0 +1,173 @@
+---
+description: Technical architecture of the realtime system
+globs: packages/realtime/**, apps/realtime/**
+alwaysApply: false
+---
+priority: high
+version: 2025.12.07
+---
+
+# Realtime Architecture
+
+## Intent
+Document the technical architecture of the realtime system, including the three actors (Client, Broker, Server), communication protocols, and security mechanisms.
+
+## Overview
+
+The realtime system uses a three-actor architecture:
+
+```
+┌──────────┐     WebSocket      ┌──────────┐       TCP        ┌──────────┐
+│  Client  │◄──────────────────►│  Broker  │◄────────────────►│  Server  │
+│ (Web UI) │    (Socket.IO)     │(Railway) │    (Custom)      │ (Vercel) │
+└──────────┘                    └──────────┘                  └──────────┘
+                                     │
+                                     ▼
+                              ┌──────────────┐
+                              │  PostgreSQL  │
+                              └──────────────┘
+```
+
+### Actors
+
+1. **Client**: Browser application using `@repo/realtime/client` React hooks
+2. **Broker**: Standalone Node.js server (`apps/realtime`) handling WebSocket connections and state management
+3. **Server**: Next.js/Vercel serverless functions using `@repo/realtime/internal` to emit events via TCP
+
+## Package Structure
+
+```
+packages/realtime/
+├── src/
+│   ├── client/          # React hooks and provider
+│   │   ├── provider.tsx # RealtimeProvider context
+│   │   ├── use-socket.ts
+│   │   └── use-room.ts
+│   ├── events/          # Event type definitions (shared)
+│   │   ├── client-events.ts  # Client → Broker
+│   │   ├── server-events.ts  # Server → Broker (TCP)
+│   │   └── broker-events.ts  # Broker → Client
+│   ├── lib/             # Shared utilities
+│   │   ├── protocol.ts  # TCP frame protocol with HMAC
+│   │   ├── tcp-client.ts
+│   │   ├── tcp-server.ts
+│   │   └── types.ts
+│   ├── server/          # Broker server factory
+│   │   └── create-server.ts
+│   └── internal/        # Server-to-Broker TCP client
+│       └── create-emitter.ts
+```
+
+## Communication Protocols
+
+### Client ↔ Broker (WebSocket/Socket.IO)
+
+Standard Socket.IO connection:
+
+```
+wss://broker.example.com/
+```
+
+Events are validated with Zod schemas defined in `packages/realtime/src/events/`.
+
+### Server → Broker (TCP with HMAC)
+
+Custom binary protocol for serverless compatibility (no persistent connections):
+
+```
+Frame Format:
+┌─────────────┬─────────────────┬──────────────┐
+│ Length (4B) │ JSON Payload    │ HMAC-SHA256  │
+│  uint32 BE  │ (variable)      │   (32B)      │
+└─────────────┴─────────────────┴──────────────┘
+```
+
+The HMAC signature ensures only services with `REALTIME_SECRET_KEY` can emit events.
+
+## Event Types
+
+### Client Events (`client-events.ts`)
+
+Events the browser sends to the broker:
+
+```ts
+"room:join"      → { roomId: string }
+"room:leave"     → { roomId: string }
+"message:send"   → { roomId: string, content: string }
+"cursor:move"    → { roomId: string, x: number, y: number }
+"doc:join"       → { documentId: string }
+"doc:update"     → { documentId: string, update: string }
+```
+
+### Server Events (`server-events.ts`)
+
+Events the backend sends to the broker via TCP:
+
+```ts
+"notification:send" → { userId: string, title: string, message: string }
+"room:broadcast"    → { roomId: string, event: string, data: unknown }
+```
+
+### Broker Events (`broker-events.ts`)
+
+Events the broker sends to clients:
+
+```ts
+"connection:info"   → { user: { id, name } }
+"notification:new"  → { title: string, message: string }
+"message:new"       → { roomId, user, content, timestamp }
+"cursor:update"     → { roomId, user, x, y }
+"room:sync"         → { roomId, users: [...] }
+"doc:sync"          → { documentId, state }
+"doc:update"        → { documentId, update }
+```
+
+## Database Integration (Broker)
+
+The broker can connect directly to PostgreSQL for features like Yjs document persistence:
+
+```
+apps/realtime/
+├── src/lib/
+│   └── documents/
+│       ├── database.ts   # Drizzle connection
+│       ├── state.ts      # In-memory Y.Doc management
+│       └── operations.ts # Load/save with debounce
+```
+
+Documents are saved with debouncing (3s) to avoid excessive writes during collaborative editing.
+
+## Security Summary
+
+| Channel | Protection |
+|---------|-----------|
+| Client ↔ Broker | WSS (TLS) |
+| Server → Broker | TCP + HMAC-SHA256 signature |
+
+## Environment Variables
+
+### Broker (`apps/realtime`)
+
+```
+REALTIME_SECRET_KEY  # Shared secret (32+ chars)
+WS_PORT              # WebSocket port (default: 3001)
+TCP_PORT             # Internal TCP port (default: 9000)
+ALLOWED_ORIGINS      # CORS origins (comma-separated)
+API_URL              # Web app URL for Better Auth session verification
+```
+
+### Web App (`apps/web`)
+
+```
+REALTIME_SECRET_KEY       # Same shared secret
+REALTIME_TCP_URL          # tcp://broker:9000
+```
+
+## Preview Environments
+
+For PR preview deployments, see `.cursor/rules/project/preview-environments.mdc`.
+
+The system automatically links Vercel preview deployments with Railway PR environments:
+- GitHub Actions detects Vercel deployment success
+- Updates Railway `API_URL` to point to Vercel preview
+- Railway realtime service authenticates against the correct preview

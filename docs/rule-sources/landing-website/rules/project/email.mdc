@@ -1,0 +1,39 @@
+---
+description: Centralize email sending with @repo/email sendEmail helper
+alwaysApply: false
+---
+priority: high
+version: 2025.11.22
+---
+
+# Resend Email Entry Point
+
+## Intent
+- Expose a single helper that wires the validated `@repo/env` secrets into the Resend client.
+- Guarantee the template payload is type-safe by coupling the template key with its props.
+- Keep mail subjects and recipients explicit in the caller while templates focus on rendering.
+
+## Checklist
+- Import `sendEmail` from `@repo/email` instead of instantiating `Resend` in feature code.
+- Choose one of the supported template keys (`"change-email"`, `"verify-email"`, `"reset-password"`, `"waitlist-approved"`, `"organization-invitation"`, `"2fa-otp"`).
+- Pass template-specific props as the second argument and `SendEmailOptions` (to, subject, optional cc/bcc, replyTo, from) as the third argument.
+- Let the helper default `from` to `env.RESEND_FROM_EMAIL`; only override if you must change the display name.
+
+## Details
+`sendEmail` maintains an internal registry that maps template keys to React components. The second argument is narrowed to that component’s props so TypeScript surfaces missing data immediately. The third argument is always the delivery envelope: `to` and `subject` are required, while `from`, `cc`, `bcc`, and `replyTo` are optional overrides that flow straight into `resend.emails.send`. The helper calls `new Resend(env.RESEND_API_KEY)` once per module so no other package should touch `process.env` or recreate the client.
+
+## Examples
+### ✅ Good
+```
+await sendEmail(
+  "verify-email",
+  { otp: code, host: appHost, email: recipient, name: displayName },
+  { to: recipient, subject: "Verify your email" },
+);
+```
+### ❌ Bad
+```
+const resend = new Resend(process.env.RESEND_API_KEY!);
+await resend.emails.send({ react: <VerifyEmailTemplate {...props} /> });
+```
+This bypasses the shared env loader and the template-prop narrowing, so the email will compile even when props are missing.

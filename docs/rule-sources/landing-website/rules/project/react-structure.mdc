@@ -1,0 +1,38 @@
+---
+description: Composants ciblés et séparation UI/données pour les écrans de gestion
+globs: "apps/web/**/*.tsx, apps/web/hooks/**/*.ts, apps/web/**/_hooks/**/*.ts, packages/ui/src/**/*.tsx"
+alwaysApply: false
+---
+
+priority: high
+version: 2026.09.22
+
+---
+
+# Structure React
+
+- Utiliser les Server Components par défaut. Placer `use client` à la frontière
+  interactive, pas systématiquement sur une page entière.
+- Colocaliser les composants spécifiques dans `_components` et les hooks de
+  parcours dans `_hooks`. Réserver `packages/ui` aux primitives réellement partagées.
+- Un composant porte une responsabilité identifiable. Extraire les sous-vues,
+  transformations et effets lorsque cela rend le parcours plus lisible.
+- Garder les fichiers en kebab-case et utiliser les alias réellement disponibles.
+  Ne pas ajouter de barrel uniquement pour réexporter un seul fichier.
+- Garder l'état local tant qu'il n'a pas besoin d'être partagé. Ne pas recopier
+  les données TanStack Query dans un store ou un effet de synchronisation.
+- Éviter les effets pour calculer une valeur dérivable au rendu.
+  Nettoyer abonnements, écouteurs et ressources dans les effets concernés.
+- Utiliser des clés métier stables pour les listes.
+- Employer React Hook Form et Zod pour les formulaires métier ; gérer erreurs,
+  progression, doubles soumissions et conservation des saisies.
+- Réutiliser AlignUI et ses variantes disponibles, les tokens et
+  `cn` depuis `@repo/ui/utils/cn`. Ne pas recopier les anciennes API de boutons.
+- Prévoir clavier, focus visible, labels, responsive et états vide/erreur/chargement.
+- Ajouter `memo`, `useMemo` ou `useCallback` pour un coût constaté, pas par défaut.
+- Les règles de permission sont appliquées au serveur même si l'UI masque l'action.
+
+Exemple : une page charge les données ; son `_components/edit-form.tsx`
+client gère l'édition via le client oRPC partagé.
+
+Source : Agency, `global-project-config.mdc` et `react-best-practices.mdc`.

@@ -1,0 +1,316 @@
+---
+description: Preview environment setup for Vercel and Railway integration
+globs: .github/workflows/preview-*.yml, .github/scripts/railway-*.mjs, apps/realtime/railway.json
+alwaysApply: false
+---
+priority: high
+version: 2025.12.10
+---
+
+# Preview Environments
+
+## Intent
+Document how preview environments work across Vercel (web app), Railway (realtime service), ensuring all services are properly linked for PR testing.
+
+## Architecture
+
+```
+┌────────────────────────────────────┐
+│            Pull Request            │
+└────────────────────────────────────┘
+                   │
+        ┌─────────────────────┐
+        ▼                     ▼
+┌───────────────┐    ┌───────────────┐
+│ Vercel Preview│    │Railway Preview│
+│  (apps/web)   │◄───│(apps/realtime)│
+│               │    │               │
+│  API_URL ─────┼────┤               │
+└───────────────┘    └───────────────┘
+```
+
+## How It Works
+
+### Production (main branch)
+1. **Push to main** → Vercel creates production deployment
+2. **Vercel deployment succeeds** → GitHub Actions workflow triggers (`sync-production-environment`)
+3. **Workflow deploys to Railway `production` environment** → Creates if missing, triggers deployment from commit
+
+### Dev (dev branch)
+1. **Push to dev** → Vercel creates preview deployment
+2. **Vercel deployment succeeds** → GitHub Actions workflow triggers (`sync-dev-environment`)
+3. **Workflow deploys to Railway `dev` environment** → Creates if missing, triggers deployment from commit
+
+### Pull Requests
+1. **PR is opened** → Vercel creates preview deployment + Neon creates database branch
+2. **Vercel deployment succeeds** → GitHub Actions workflow triggers (`sync-preview-environment`)
+3. **Workflow checks for Railway PR environment** → Creates `pr-{number}` if missing (duplicated from production)
+4. **Workflow sets API_URL** → Only variable modified, others inherited from production
+5. **Railway deploys from commit** → Realtime service fetches other config via discovery endpoint
+6. **PR is closed** → Workflow deletes the Railway PR environment
+
+## Environment Management
+
+### Creation Strategy
+
+The workflow **manually creates** Railway environments instead of relying on Railway's automatic PR environment feature:
+
+- **New PR**: Duplicates production environment, sets `API_URL`, triggers deploy
+- **Subsequent deploys**: Updates `API_URL` only, triggers redeploy
+- **PR closed**: Deletes the environment via Railway API
+
+### Variable Strategy
+
+Only `API_URL` is set via the workflow. All other variables are:
+
+1. **Inherited from production** when environment is duplicated
+2. **Fetched via discovery endpoint** at runtime for dynamic values (DATABASE_URL, etc.)
+
+## Required Secrets
+
+Add these secrets to your GitHub repository (run `pnpm github:setup` to automate):
+
+| Secret | Description |
+|--------|-------------|
+| `RAILWAY_TOKEN` | Railway **team** token (from team settings or railway.app/account/tokens) |
+| `RAILWAY_PROJECT_ID` | Railway project ID (from project settings) |
+| `RAILWAY_SERVICE_ID` | Railway realtime service ID |
+| `VERCEL_TOKEN` | Vercel API token (from vercel.com/account/tokens) |
+| `VERCEL_ORG_ID` | Vercel org/team ID (auto-set from `.vercel/project.json`) |
+
+**Note**: The workflow uses a team token to dynamically create temporary project tokens for each deployment. This allows deploying to any environment while keeping security tight - project tokens are created, used for `railway up`, and immediately deleted.
+
+## Railway Configuration
+
+### railway.json
+
+The `apps/realtime/railway.json` file configures Railway builds:
+
+```json
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter @app/realtime build"
+  },
+  "deploy": {
+    "startCommand": "pnpm --filter @app/realtime start",
+    "healthcheckPath": "/",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
+```
+
+### Production Environment Variables
+
+Set these in Railway dashboard for the production environment (they will be copied to PR environments):
+
+```
+REDIS_URL                        # Shared Redis instance
+REALTIME_SECRET_KEY              # Same across all environments
+WS_PORT                          # Default: 3001
+TCP_PORT                         # Default: 9000
+ALLOWED_ORIGINS                  # Include *.vercel.app
+API_URL                          # Production URL (overridden per PR)
+VERCEL_AUTOMATION_BYPASS_SECRET  # Required if Vercel deployment protection is enabled
+```
+
+### Vercel Deployment Protection Bypass
+
+If your Vercel project has deployment protection enabled (standard/password/Vercel auth), the realtime service's discovery requests will be blocked. To bypass this:
+
+1. Go to Vercel Dashboard → Project Settings → Deployment Protection
+2. Scroll to "Protection Bypass for Automation"
+3. Copy the bypass secret
+4. Add `VERCEL_AUTOMATION_BYPASS_SECRET` to Railway production environment
+
+The discovery request will automatically include the bypass token as query parameters.
+
+## GitHub Actions Workflow
+
+The workflow (`.github/workflows/preview-realtime.yml`) handles:
+
+### Sync Job (on deployment_status success)
+
+1. **Get PR number** from commit SHA or branch name
+2. **Get Vercel preview URL** from deployment event
+3. **Check for existing PR environment** in Railway
+4. **Create environment if missing** by duplicating from production
+5. **Set API_URL** to Vercel preview URL
+6. **Trigger redeploy** of the service
+7. **Comment on PR** with preview links
+
+### Cleanup Job (on pull_request closed)
+
+1. **Find PR environment** by name (`pr-{number}`)
+2. **Delete environment** via Railway API
+
+### Manual Sync Script
+
+If automatic sync fails, run manually:
+
+```bash
+export RAILWAY_TOKEN="your-railway-team-token"
+
+# Create or update PR environment
+node .github/scripts/railway-preview-sync.mjs \
+  --project-id "railway-project-id" \
+  --service-id "railway-service-id" \
+  --pr-number "123" \
+  --api-url "https://your-preview.vercel.app" \
+  --action "upsert"
+
+# Delete PR environment
+node .github/scripts/railway-preview-sync.mjs \
+  --project-id "railway-project-id" \
+  --pr-number "123" \
+  --action "delete"
+
+# Deploy to named environment
+node .github/scripts/railway-preview-sync.mjs \
+  --project-id "railway-project-id" \
+  --service-id "railway-service-id" \
+  --environment "production" \
+  --api-url "https://your-app.vercel.app" \
+  --action "deploy"
+```
+
+The script uses a hybrid approach:
+1. Uses the Railway GraphQL API to manage environments and variables
+2. Creates a temporary project token for the target environment
+3. Deploys using `railway up` with that token
+4. Deletes the temporary token after deployment
+
+## Setup Checklist
+
+### Vercel + Neon
+
+1. [ ] Install Neon integration in Vercel project settings
+2. [ ] Enable "Create a branch for each preview deployment"
+
+### Railway
+
+1. [ ] Set production environment variables (REDIS_URL, REALTIME_SECRET_KEY, etc.)
+2. [ ] Add `*.vercel.app` to ALLOWED_ORIGINS
+3. [ ] Deploy with `apps/realtime/railway.json`
+4. [ ] **Do NOT enable** Railway's automatic PR environments (workflow manages this)
+5. [ ] **Disconnect GitHub autodeploys**: Go to Service Settings → Source → click "Disconnect" to prevent Railway from auto-deploying on commits (the CI workflow handles deployments via API)
+
+### GitHub
+
+Run `pnpm github:setup` or manually add:
+
+1. [ ] Add `RAILWAY_TOKEN` secret (team token from team settings)
+2. [ ] Add `RAILWAY_PROJECT_ID` secret
+3. [ ] Add `RAILWAY_SERVICE_ID` secret
+4. [ ] Add `VERCEL_TOKEN` secret (created from team context)
+5. [ ] Add `VERCEL_ORG_ID` secret (auto-populated from `.vercel/project.json`)
+
+## Troubleshooting
+
+### Environment Creation Failed
+
+1. Check RAILWAY_TOKEN has permissions to create environments
+2. Verify production environment exists and is named "production" or "prod"
+3. Check Railway API logs for detailed errors
+
+### API_URL Not Updating
+
+1. Check Vercel preview URL is being fetched correctly
+2. Verify RAILWAY_TOKEN has write permissions
+3. Check service ID matches the realtime service
+
+### Environment Not Deleted
+
+1. Check PR environment naming matches `pr-{number}` pattern
+2. Verify RAILWAY_TOKEN has delete permissions
+3. Check if environment was manually renamed
+
+### CORS Issues in Preview
+
+Ensure `ALLOWED_ORIGINS` in Railway production includes:
+- `https://*.vercel.app`
+- Or the specific preview URL pattern for your project
+
+### Discovery Returns HTML / Authentication Page
+
+If the discovery endpoint returns an HTML authentication page instead of JSON:
+
+1. Vercel deployment protection is enabled
+2. Add `VERCEL_AUTOMATION_BYPASS_SECRET` to Railway environment
+3. Get the secret from Vercel Dashboard → Project Settings → Deployment Protection → Protection Bypass for Automation
+
+### Duplicate Railway Deployments
+
+If Railway deploys twice for each commit:
+
+1. Railway's GitHub autodeploy is enabled (auto-deploys on every commit)
+2. The CI workflow is also triggering a deploy via CLI
+3. **Fix**: Go to Railway Dashboard → Service Settings → Source → click "Disconnect"
+4. This stops Railway from auto-deploying; the CI workflow will handle deployments via `railway redeploy`
+
+### Skipped/Cascading GitHub Actions Jobs
+
+If you see many skipped workflow runs after each push:
+
+1. Other services (like Railway) may also fire `deployment_status` events
+2. The workflow now filters on `github.actor == 'vercel[bot]'` to only run for Vercel deployments
+3. Non-Vercel deployments are ignored at the job level (not skipped, just filtered out)
+
+## Flow Examples
+
+### Production Deployment (main branch)
+```
+Push to main
+  │
+  └─► Vercel deploys → https://project.vercel.app (Production)
+        │
+        └─► GitHub Actions triggers (deployment_status success, environment=Production)
+              │
+              ├─► Finds Railway "production" environment (or creates if missing)
+              │
+              ├─► Sets API_URL = production Vercel URL
+              │
+              └─► Triggers deployment from commit SHA
+                    └─► Realtime service fetches config via discovery
+```
+
+### Dev Deployment (dev branch)
+```
+Push to dev
+  │
+  └─► Vercel deploys → https://project-dev.vercel.app (Preview)
+        │
+        └─► GitHub Actions triggers (deployment_status success, ref=dev)
+              │
+              ├─► Finds Railway "dev" environment (or creates if missing)
+              │
+              ├─► Sets API_URL = dev Vercel URL
+              │
+              └─► Triggers deployment from commit SHA
+                    └─► Realtime service fetches config via discovery
+```
+
+### PR Deployment
+```
+PR #42 opened
+  │
+  └─► Vercel deploys → https://project-git-feature-42.vercel.app (Preview)
+        │
+        └─► GitHub Actions triggers (deployment_status success)
+              │
+              ├─► No Railway pr-42 environment exists
+              │     └─► Creates pr-42 by duplicating production
+              │
+              ├─► Sets API_URL = https://project-git-feature-42.vercel.app
+              │
+              └─► Triggers deployment from commit SHA
+                    └─► Realtime service fetches config via discovery
+
+PR #42 closed
+  │
+  └─► GitHub Actions triggers (pull_request closed)
+        │
+        └─► Deletes pr-42 environment from Railway
+```
