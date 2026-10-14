@@ -1,0 +1,433 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { CARDS, CARD_IDS, DEFAULT_DECK, type CardId } from "@/game/cards";
+import {
+  createGame,
+  crowns,
+  deploy,
+  MATCH_MS,
+  OVERTIME_MS,
+  STEP_MS,
+  tick,
+  type Lane,
+} from "@/game/engine";
+import { cn } from "@/lib/utils";
+
+const ZONES = Array.from({ length: 16 }, (_, index) => ({
+  lane: (index % 2 === 0 ? "left" : "right") as Lane,
+  y: (Math.floor(index / 2) + 0.5) * 12.5,
+}));
+
+export function Game() {
+  const [deck, setDeck] = useState<CardId[]>([...DEFAULT_DECK]);
+  const [game, setGame] = useState(createGame);
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [message, setMessage] = useState(
+    "Choisis 8 cartes, puis lance la partie.",
+  );
+  const running = game.status === "running";
+  const selectedId =
+    selectedSlot !== null ? game.sides.player.hand[selectedSlot] : undefined;
+  const selectedCard = selectedId ? CARDS[selectedId] : undefined;
+  const remainingMs =
+    game.elapsedMs < MATCH_MS
+      ? MATCH_MS - game.elapsedMs
+      : MATCH_MS + OVERTIME_MS - game.elapsedMs;
+  const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+
+  useEffect(() => {
+    if (!running) return;
+    const interval = window.setInterval(() => setGame(tick), STEP_MS);
+    const handleVisibility = () => {
+      if (document.hidden)
+        setGame((previous) =>
+          previous.status === "running"
+            ? { ...previous, status: "paused" }
+            : previous,
+        );
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [running]);
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.matches("input, textarea, select")
+      )
+        return;
+      if (event.key === "Escape") setSelectedSlot(null);
+      if (running && /^[1-4]$/.test(event.key))
+        setSelectedSlot(Number(event.key) - 1);
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [running]);
+
+  function handleDeploy(lane: Lane, y: number) {
+    if (selectedSlot === null) {
+      setMessage("Sélectionne une carte de ta main avant de viser l’arène.");
+      return;
+    }
+    const result = deploy(game, "player", selectedSlot, lane, y);
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setGame(result.state);
+    setSelectedSlot(null);
+    setMessage(
+      `${selectedCard?.name} joué${selectedCard?.kind === "spell" ? "" : " dans la voie " + (lane === "left" ? "gauche" : "droite")}.`,
+    );
+  }
+
+  function handleStart() {
+    setGame({ ...createGame(deck), status: "running" });
+    setSelectedSlot(null);
+    setMessage(
+      "Sélectionne une carte, puis une zone de l’arène. Tu joues en bleu.",
+    );
+  }
+
+  return (
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <section
+        className="mx-auto w-full max-w-xl space-y-4"
+        aria-label="Partie contre le bot"
+      >
+        <div className="flex items-center justify-between gap-2 rounded-xl border p-3 text-sm">
+          <span className="font-semibold text-blue-700">
+            Toi · {crowns(game, "player")} ♛
+          </span>
+          <div
+            className="text-center font-mono text-lg tabular-nums"
+            aria-label="Temps restant"
+          >
+            {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+            <span className="block font-sans text-xs text-muted-foreground">
+              {game.elapsedMs >= MATCH_MS
+                ? "Mort subite"
+                : game.elapsedMs >= 120_000
+                  ? "Élixir ×2"
+                  : "Temps normal"}
+            </span>
+          </div>
+          <span className="font-semibold text-red-700">
+            Bot · {crowns(game, "bot")} ♛
+          </span>
+        </div>
+
+        <div
+          className="relative isolate h-[min(52svh,560px)] min-h-80 overflow-hidden rounded-2xl border-2 border-slate-300 bg-slate-50"
+          aria-label="Arène : bot en haut, toi en bas"
+        >
+          <div className="absolute inset-x-0 top-0 h-1/2 bg-red-50" />
+          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-blue-50" />
+          <div className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-dashed border-slate-300" />
+          <div className="pointer-events-none absolute inset-x-0 top-[48%] h-[4%] bg-sky-200">
+            <span className="absolute left-[18%] h-full w-[14%] bg-amber-200" />
+            <span className="absolute right-[18%] h-full w-[14%] bg-amber-200" />
+          </div>
+          <div className="absolute inset-0 grid grid-cols-2 grid-rows-8">
+            {ZONES.map(({ lane, y }) => {
+              const allowed =
+                selectedCard?.kind === "spell" || (y >= 55 && y <= 88);
+              return (
+                <button
+                  key={`${lane}-${y}`}
+                  type="button"
+                  aria-label={`${lane === "left" ? "Voie gauche" : "Voie droite"}, zone ${Math.floor(y / 12.5) + 1}${y < 50 ? ", camp adverse" : ", ton camp"}`}
+                  disabled={!running}
+                  onClick={() => handleDeploy(lane, y)}
+                  className={cn(
+                    "z-10 outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-600",
+                    running &&
+                      selectedCard &&
+                      allowed &&
+                      "cursor-crosshair border border-dashed border-blue-400/50 hover:bg-blue-300/30",
+                    running && selectedCard && !allowed && "cursor-not-allowed",
+                  )}
+                />
+              );
+            })}
+          </div>
+          {game.entities.map((entity) => {
+            const isStructure =
+              entity.kind === "tower" || entity.kind === "king";
+            const siblings = game.entities.filter(
+              (e) =>
+                e.team === entity.team &&
+                e.lane === entity.lane &&
+                e.cardId === entity.cardId &&
+                Math.abs(e.y - entity.y) < 3,
+            );
+            const offset = isStructure
+              ? 0
+              : (siblings.findIndex((e) => e.id === entity.id) -
+                  (siblings.length - 1) / 2) *
+                5;
+            return (
+              <div
+                key={entity.id}
+                aria-hidden="true"
+                style={{
+                  left: `${(entity.kind === "king" ? 50 : entity.lane === "left" ? 25 : 75) + offset}%`,
+                  top: `${entity.y}%`,
+                }}
+                className={cn(
+                  "pointer-events-none absolute z-20 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center",
+                  isStructure ? "w-16" : "w-9",
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex items-center justify-center border-2 font-bold shadow-sm",
+                    entity.team === "player"
+                      ? "border-blue-700 bg-blue-100 text-blue-900"
+                      : "border-red-700 bg-red-100 text-red-900",
+                    isStructure
+                      ? "h-9 w-11 rounded-lg text-xl"
+                      : entity.kind === "building"
+                        ? "h-7 w-7 rounded text-xs"
+                        : "h-6 w-6 rounded-full text-xs",
+                  )}
+                >
+                  {entity.kind === "king"
+                    ? "♛"
+                    : entity.kind === "tower"
+                      ? "♜"
+                      : entity.cardId
+                        ? CARDS[entity.cardId].symbol
+                        : "?"}
+                </div>
+                <div className="mt-0.5 h-1 w-full overflow-hidden rounded bg-slate-200">
+                  <div
+                    className={
+                      entity.team === "player"
+                        ? "h-full bg-blue-600"
+                        : "h-full bg-red-600"
+                    }
+                    style={{
+                      width: `${Math.max(0, entity.hp / entity.maxHp) * 100}%`,
+                    }}
+                  />
+                </div>
+                {isStructure && (
+                  <span className="rounded bg-white/90 px-1 text-[10px] tabular-nums">
+                    {Math.ceil(entity.hp)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          {game.effect && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute z-30 h-20 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-orange-500 bg-orange-300/60"
+              style={{
+                left: game.effect.lane === "left" ? "25%" : "75%",
+                top: `${game.effect.y}%`,
+              }}
+            />
+          )}
+          {game.status !== "running" && (
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-white/85 p-6 text-center">
+              <p className="text-2xl font-semibold">
+                {game.status === "ready"
+                  ? "À toi de jouer"
+                  : game.status === "paused"
+                    ? "Partie en pause"
+                    : game.outcome === "player"
+                      ? "Victoire !"
+                      : game.outcome === "bot"
+                        ? "Défaite"
+                        : "Match nul"}
+              </p>
+              <p className="max-w-xs text-sm text-muted-foreground">
+                {game.status === "ready"
+                  ? "Détruis la tour du roi adverse, ou termine avec plus de couronnes."
+                  : game.status === "paused"
+                    ? "Le temps et le bot sont arrêtés."
+                    : "Ajuste ton deck et retente une partie."}
+              </p>
+              {game.status === "ready" && (
+                <Button
+                  size="lg"
+                  disabled={deck.length !== 8}
+                  onClick={handleStart}
+                >
+                  Lancer la partie
+                </Button>
+              )}
+              {game.status === "paused" && (
+                <Button
+                  onClick={() =>
+                    setGame((previous) => ({ ...previous, status: "running" }))
+                  }
+                >
+                  Reprendre
+                </Button>
+              )}
+              {game.status === "finished" && (
+                <Button
+                  onClick={() => {
+                    setGame(createGame(deck));
+                    setSelectedSlot(null);
+                    setMessage("Tu peux ajuster ton deck avant de rejouer.");
+                  }}
+                >
+                  Nouvelle partie
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="font-medium text-violet-700">Élixir</span>
+            <span className="font-mono tabular-nums">
+              {game.sides.player.elixir.toFixed(1)} / 10
+            </span>
+          </div>
+          <progress
+            className="h-3 w-full accent-violet-600"
+            max={10}
+            value={game.sides.player.elixir}
+            aria-label="Élixir disponible"
+          />
+          <div className="grid grid-cols-4 gap-2" aria-label="Ta main">
+            {game.sides.player.hand.map((id, slot) => (
+              <Button
+                key={slot}
+                variant={selectedSlot === slot ? "default" : "outline"}
+                className="h-auto min-h-20 flex-col gap-1 whitespace-normal px-1 py-2 text-center text-xs"
+                disabled={!running || game.sides.player.elixir < CARDS[id].cost}
+                aria-pressed={selectedSlot === slot}
+                onClick={() => {
+                  setSelectedSlot(slot);
+                  setMessage(
+                    `${CARDS[id].name} : ${CARDS[id].description} Choisis une zone${CARDS[id].kind === "spell" ? "." : " dans ton camp."}`,
+                  );
+                }}
+              >
+                <span className="text-base font-semibold">
+                  {CARDS[id].symbol} · {CARDS[id].cost} ◈
+                </span>
+                <span>{CARDS[id].name}</span>
+                <span className="opacity-60">Touche {slot + 1}</span>
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            À venir :{" "}
+            {game.sides.player.queue[0] &&
+              CARDS[game.sides.player.queue[0]].name}
+          </p>
+          <p role="status" aria-live="polite" className="min-h-10 text-sm">
+            {message}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {running && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                setGame((previous) => ({ ...previous, status: "paused" }))
+              }
+            >
+              Pause
+            </Button>
+          )}
+          {game.status !== "ready" && game.status !== "finished" && (
+            <Button
+              variant="ghost"
+              onClick={() =>
+                setGame((previous) => ({
+                  ...previous,
+                  status: "finished",
+                  outcome: "bot",
+                }))
+              }
+            >
+              Abandonner
+            </Button>
+          )}
+        </div>
+      </section>
+
+      <aside className="space-y-5 rounded-2xl border p-5">
+        <div>
+          <h2 className="text-lg font-semibold">
+            Ton deck{" "}
+            <span className="text-sm font-normal text-muted-foreground">
+              {deck.length} / 8
+            </span>
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            8 cartes parmi 10. Modifie le deck entre les parties.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+          {CARD_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              disabled={
+                game.status !== "ready" ||
+                (!deck.includes(id) && deck.length === 8)
+              }
+              aria-pressed={deck.includes(id)}
+              onClick={() =>
+                setDeck((previous) =>
+                  previous.includes(id)
+                    ? previous.filter((item) => item !== id)
+                    : [...previous, id],
+                )
+              }
+              className={cn(
+                "rounded-lg border p-3 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:opacity-60",
+                deck.includes(id) && "border-blue-500 bg-blue-50",
+              )}
+            >
+              <span className="flex justify-between gap-2 font-medium">
+                <span>{CARDS[id].name}</span>
+                <span>{CARDS[id].cost} ◈</span>
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {CARDS[id].description}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <Badge variant="outline">Prototype local contre bot</Badge>
+          <p>
+            Sélectionne une carte (ou touches 1 à 4), puis clique une zone. Au
+            clavier, Tab et Entrée permettent de viser. Échap annule la
+            sélection.
+          </p>
+          <p>
+            Unités en bleu, bot en rouge. Deux voies, trois tours par camp. Les
+            sorts peuvent viser les deux camps.
+          </p>
+          <p>
+            3 minutes, élixir doublé après 2 minutes, puis 1 minute de mort
+            subite en cas d’égalité. À égalité finale : match nul.
+          </p>
+          <p>
+            Changer d’onglet met automatiquement en pause. Recharger la page
+            remet la partie à zéro.
+          </p>
+        </div>
+      </aside>
+    </div>
+  );
+}

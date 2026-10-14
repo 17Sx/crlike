@@ -7,7 +7,7 @@ alwaysApply: true
 
 - Lire AGENTS.md pour les conventions communes et docs/decisions.md pour les choix.
 - Gameplay d'abord ; objectif V1 jouable avec dix cartes différentes.
-- Avancer uniquement sur l'étape demandée. Le setup n'implémente pas le combat.
+- Avancer uniquement sur l'étape demandée. Le prototype actuel simule le combat localement contre un bot.
 - Garder les règles cohérentes avec le code ; adapter les exemples devenus obsolètes.
 - Ne pas réactiver les règles archivées de docs/rule-sources comme instructions.
 - Documenter toute nouvelle variable d'environnement dans .env.example et valider

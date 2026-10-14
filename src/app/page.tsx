@@ -1,47 +1,28 @@
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Game } from "./_components/game";
 import { ConnectionCheck } from "./_components/connection-check";
 
 export default function Home() {
   return (
-    <main className="mx-auto flex min-h-svh max-w-3xl flex-col justify-center gap-8 px-6 py-16">
-      <header className="space-y-4">
-        <Badge variant="secondary">Prototype · Étape 1</Badge>
-        <h1 className="text-4xl font-semibold tracking-tight sm:text-5xl">
-          CRLike
-        </h1>
-        <p className="max-w-xl text-lg text-muted-foreground">
-          Un jeu de stratégie en temps réel sur le web. On construit d’abord une
-          partie jouable, puis son univers visuel.
-        </p>
+    <main className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">CRLike</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Construis ton deck. Défends tes tours. Prends la couronne.
+          </p>
+        </div>
+        <Badge variant="secondary">Prototype jouable · 10 cartes</Badge>
       </header>
-      <Card>
-        <CardHeader>
-          <CardTitle>Socle technique</CardTitle>
-          <CardDescription>
-            Next.js, oRPC et shadcn sont configurés.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Game />
+      <details className="rounded-lg border p-4 text-sm">
+        <summary className="cursor-pointer font-medium">
+          Diagnostic du serveur
+        </summary>
+        <div className="pt-4">
           <ConnectionCheck />
-        </CardContent>
-      </Card>
-      <section aria-labelledby="next-step" className="space-y-2">
-        <h2 id="next-step" className="font-medium">
-          Prochaine étape : la boucle de jeu
-        </h2>
-        <p className="text-sm leading-6 text-muted-foreground">
-          Arène, tours, élixir et déploiement des unités. Objectif V1 : une
-          partie complète avec 10 cartes différentes. Le combat n’est pas encore
-          implémenté.
-        </p>
-      </section>
+        </div>
+      </details>
     </main>
   );
 }

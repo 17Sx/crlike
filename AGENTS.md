@@ -18,8 +18,8 @@
   `/Users/noa/.codex/skills/impulse-pr-workflow/SKILL.md` (ou le skill disponible).
   Une lecture ou une review seule reste en lecture seule.
 - Utiliser `pnpm` dans la version du `packageManager`. Valider avec `pnpm checks`
-  et `pnpm build`. Ajouter des tests pour les comportements du moteur au moment
-  de son implémentation, avec horloge et hasard contrôlables.
+  et `pnpm build`. Garder les tests du moteur dans `pnpm checks`,
+  avec horloge et hasard contrôlables.
 - Limiter le tiret cadratin ; privilégier virgules, points ou parenthèses.
 
 ## Architecture
@@ -28,7 +28,7 @@
 - `src/components/ui` : primitives shadcn ; composants propres aux pages dans `_components`.
 - `src/server` : procédures oRPC et logique serveur, protégées avec `server-only`.
 - `src/lib` : utilitaires et client oRPC du navigateur, imports serveur uniquement de type.
-- Le futur moteur sera indépendant de React, du DOM et du transport réseau.
+- `src/game` : moteur déterministe, cartes et tests, indépendants de React, du DOM et du réseau.
 - TypeScript strict, fichiers kebab-case, alias `@/*` vers `src/*`.
 - Server Components par défaut, état local et frontières client limitées.
 - Validation Zod aux frontières externes ; aucune confiance dans les actions du navigateur.
