@@ -1,0 +1,131 @@
+---
+description: Add pages and actions to the global search component
+globs: apps/web/**
+alwaysApply: false
+---
+priority: medium
+version: 2025.12.15
+---
+
+# Search Component Usage
+
+## Intent
+The global search (Cmd+K) provides quick navigation and actions. When adding new pages or actions to the application, they should be registered in the search configuration so users can discover and access them.
+
+## When to Update Search
+
+Add to search when:
+- Creating a new navigable page in the application
+- Adding a new user action (logout, toggle theme, etc.)
+- Adding features users might want to access quickly
+
+Skip search registration for:
+- API routes
+- Internal components without direct user access
+- Pages already covered by parent routes
+
+## File Location
+
+Search configuration is in `apps/web/hooks/use-search-results.ts`
+
+## Adding a New Page
+
+1. Add the page path to `apps/web/constants/pages.ts` if not already present
+2. Add an entry to `PAGES_CONFIG` array:
+
+```ts
+{
+  id: "unique-page-id",
+  label: "Page Display Name",
+  icon: RiIconName,
+  keywords: ["search", "terms"],
+  description: "Brief description",
+},
+```
+
+3. Add the path mapping to `PAGE_PATHS`:
+
+```ts
+"unique-page-id": PAGES.SECTION.PAGE_NAME,
+```
+
+4. Import the icon from `@repo/ui/icon`
+
+### Example: Adding a Reports Page
+
+```ts
+// In PAGES_CONFIG
+{
+  id: "reports",
+  label: "Reports",
+  icon: RiFileChartLine,
+  keywords: ["analytics", "stats", "data"],
+  description: "View reports and analytics",
+},
+
+// In PAGE_PATHS
+reports: PAGES.APPLICATION.REPORTS,
+```
+
+## Adding a New Action
+
+Actions execute functions instead of navigating. Add to the `actions` array inside `useSearchResults`:
+
+```ts
+{
+  id: "action-id",
+  label: "Action Name",
+  icon: RiIconName,
+  keywords: ["search", "terms"],
+  description: "What this action does",
+  handler: () => {
+    // Action logic here
+  },
+},
+```
+
+### Example: Adding a Copy Link Action
+
+```ts
+{
+  id: "copy-link",
+  label: "Copy Link",
+  icon: RiLinkLine,
+  keywords: ["share", "url", "clipboard"],
+  description: "Copy current page URL",
+  handler: () => {
+    navigator.clipboard.writeText(window.location.href);
+  },
+},
+```
+
+## Role-Based Pages
+
+For pages that require specific roles (admin, owner, etc.), add a comment noting the requirement. The filtering logic can be extended by passing user context to `performSearch`:
+
+```ts
+// Admin-only page
+{
+  id: "admin-settings",
+  label: "Admin Settings",
+  icon: RiAdminLine,
+  keywords: ["admin"],
+  description: "System administration", // Requires admin role
+},
+```
+
+## Checklist
+
+- [ ] Page path added to `apps/web/constants/pages.ts`
+- [ ] Entry added to `PAGES_CONFIG` with id, label, icon, keywords, description
+- [ ] Path mapping added to `PAGE_PATHS`
+- [ ] Icon imported from `@repo/ui/icon`
+- [ ] Run `pnpm checks` to validate
+
+## Examples
+
+### ✅ Good
+Adding a new Settings sub-page and registering it in search with relevant keywords so users can find it by typing "notifications" or "alerts".
+
+### ❌ Bad
+Creating a new dashboard widget page but not adding it to search, making it only accessible via sidebar navigation.

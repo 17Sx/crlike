@@ -1,0 +1,15 @@
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - "@orpc/client@1.15.7"
+  - "@orpc/contract@1.15.7"
+  - "@orpc/interop@1.15.7"
+  - "@orpc/server@1.15.7"
+  - "@orpc/shared@1.15.7"
+  - "@orpc/standard-server-aws-lambda@1.15.7"
+  - "@orpc/standard-server-fastify@1.15.7"
+  - "@orpc/standard-server-fetch@1.15.7"
+  - "@orpc/standard-server-node@1.15.7"
+  - "@orpc/standard-server-peer@1.15.7"
+  - "@orpc/standard-server@1.15.7"

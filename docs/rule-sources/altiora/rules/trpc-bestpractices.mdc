@@ -1,0 +1,512 @@
+---
+description: Best practices for using tRPC with React Server Components
+globs:
+alwaysApply: false
+---
+# Standards for using tRPC with React Server Components.
+
+<rule>
+name: trpc_rsc_best_practices
+description: Best practices for using tRPC with React Server Components. Auto-included for all TypeScript and TSX files.
+globs: ["**/*.{ts,tsx}", "**/server/**/*.{ts,tsx}"]
+filters:
+  - type: file_extension
+    pattern: "\\.(ts|tsx)$"
+actions:
+  - type: suggest
+    message: |
+      Follow these tRPC with RSC best practices:
+
+      1. Server Structure:
+         - Place all backend logic in @server directory
+         - Organize controllers by data model
+         - Separate queries and mutations in each controller
+         - Use proper router organization
+         - Use centralized procedures (e.g., protectedProcedure)
+
+      2. Controller Organization:
+         - Create separate queries/ and mutations/ folders
+         - Implementation functions in queries/ and mutations/ folders
+         - Place validators in validators.ts file
+         - Define procedures in router.ts file
+         - Use clean imports with explicit naming
+         - Create types.ts files in both queries/ and mutations/ folders for context types
+
+         For example:
+         ```
+         server/routers/{model}/
+         ├── router.ts           # Define procedures that use implementations
+         ├── validators.ts       # Define all Zod schemas
+         ├── queries/
+         │   ├── index.ts        # Export all query implementations
+         │   ├── types.ts        # Define query context types
+         │   ├── getItem.ts      # Individual implementations
+         │   └── listItems.ts
+         └── mutations/
+             ├── index.ts        # Export all mutation implementations
+             ├── types.ts        # Define mutation context types
+             ├── createItem.ts   # Individual implementations
+             └── updateItem.ts
+         ```
+
+      3. Procedure Definitions:
+         - Define procedures in router.ts file:
+           ```typescript
+           // router.ts
+           export const modelRouter = router({
+             // Queries
+             getItem: protectedProcedure
+               .input(getItemSchema)
+               .query(async ({ ctx, input }) => {
+                 const { db, session } = ctx;
+                 return await getItem({ db, session, input });
+               }),
+
+             // Mutations
+             updateItem: protectedProcedure
+               .input(updateItemSchema)
+               .mutation(async ({ ctx, input }) => {
+                 const { db, session } = ctx;
+                 return await updateItem({ db, session, input });
+               }),
+           });
+           ```
+         - Implementation functions in separate files:
+           ```typescript
+           // queries/getItem.ts
+           import { ItemQueryContextWithInput } from "./types";
+
+           export async function getItem({
+             input,
+             db,
+             session
+           }: ItemQueryContextWithInput<GetItemInput>) {
+             // Implementation
+             return item;
+           }
+           ```
+         - Use proper input validation with Zod
+         - Implement proper error handling
+         - Use proper caching strategies
+         - Handle authentication properly
+         - Define reusable input schemas in validators.ts file
+
+      4. Type Definitions for DB and Context:
+         - Define clear type interfaces for database and context in types.ts files:
+           ```typescript
+           // queries/types.ts
+           import { z } from "zod";
+           import { Database } from "@/db";
+           import { Session } from "@/lib/auth/types";
+           import { getItemSchema } from "../validators";
+
+           export type GetItemInput = z.infer<typeof getItemSchema>;
+
+           // Base context without input
+           export interface ItemQueryContext {
+             db: Database;
+             session: Session;
+           }
+
+           // Extended context with input
+           export interface ItemQueryContextWithInput<T> extends ItemQueryContext {
+             input: T;
+           }
+           ```
+         - Similarly for mutations:
+           ```typescript
+           // mutations/types.ts
+           import { z } from "zod";
+           import { Database } from "@/db";
+           import { Session } from "@/lib/auth/types";
+           import { updateItemSchema } from "../validators";
+
+           export type UpdateItemInput = z.infer<typeof updateItemSchema>;
+
+           export interface ItemMutationContext<T> {
+             input: T;
+             db: Database;
+             session: Session;
+           }
+           ```
+         - Consistently use these types across all implementations
+         - Derive input types from Zod schemas using z.infer
+         - Export Database type from a central location (e.g., @/db)
+
+      5. tRPC Context Usage:
+         - Always use context for database access:
+           ```typescript
+           // Bad: Importing db directly
+           import { db } from "@/server/db";
+
+           // Good: Using db from context
+           export const myQuery = protectedProcedure.query(async ({ ctx }) => {
+             const { db, session } = ctx;
+             // Extract db from context and pass to implementation
+             return await getItem({ db, session });
+           });
+           ```
+         - Always destructure context in the procedure definition:
+           ```typescript
+           // Good: Destructuring context
+           export const getItem = protectedProcedure.query(async ({ ctx }) => {
+             const { db, session } = ctx;
+             return await getItemImpl({ db, session });
+           });
+           ```
+
+      6. Protected Procedures:
+         - Use protectedProcedure for authenticated routes
+         - Import from centralized location
+         - Properly type context and return values
+         - Use meta for role-based access:
+           ```typescript
+           // Good: Using meta for role-based access
+           export const adminQuery = protectedProcedure
+             .meta({ roles: ["admin"] })
+             .input(adminSchema)
+             .query(async ({ ctx, input }) => {
+               const { db, session } = ctx;
+               // Implementation
+             });
+           ```
+
+      7. DB Operation Patterns:
+         - Use drizzle ORM's query builder for complex queries:
+           ```typescript
+           // Good: Using query builder
+           const result = await db.query.user.findFirst({
+             where: eq(user.id, userId),
+             with: {
+               preferences: true,
+             },
+           });
+           ```
+         - Use drizzle ORM's prepared statements for simple operations:
+           ```typescript
+           // Good: Using prepared statements
+           await db
+             .update(user)
+             .set({
+               name: fullName,
+               updatedAt: new Date(),
+             })
+             .where(eq(user.id, userId));
+           ```
+         - Properly handle database errors:
+           ```typescript
+           // Good: Error handling
+           try {
+             const result = await db.query.user.findFirst({
+               where: eq(user.id, userId),
+             });
+             return result;
+           } catch (error) {
+             console.error("Database error:", error);
+             throw new TRPCError({
+               code: "INTERNAL_SERVER_ERROR",
+               message: "Failed to fetch user data",
+             });
+           }
+           ```
+
+      8. Data Access Patterns:
+         - THREE ways to use tRPC in server components:
+           * Use `prefetch(trpc.procedure.queryOptions())` to prepare data for client components
+           * Use `api.procedure()` for direct server-side data access when not used by client
+           * Use `trpc.procedure.queryOptions()` to prepare options without fetching
+         - AVOID duplicate data fetching by NOT using both prefetch and api calls for the same data
+         - ALWAYS wrap client components with `<HydrateClient>` for hydration
+
+      9. Client Component Organization:
+         - Place client components in a `_components` directory with `.client.tsx` suffix
+         - Client components should use suspense queries to access prefetched data
+         - Wrap client components in `<Suspense>` for loading states
+         - Handle client-side errors properly
+
+      10. Query Invalidation Best Practices:
+         - When invalidating queries, pass the complete query options:
+           ```typescript
+           // Bad: Using just queryKey
+           queryClient.invalidateQueries({
+             queryKey: trpc.user.getUserPreferences.queryKey
+           });
+
+           // Good: Using full queryOptions()
+           queryClient.invalidateQueries(
+             trpc.user.getUserPreferences.queryOptions()
+           );
+           ```
+         - Invalidate AFTER a successful mutation to ensure data is refreshed
+         - Keep invalidation logic centralized in mutation callbacks when possible
+
+      11. React Hook Form with tRPC:
+         - Initialize forms with direct values from suspense queries:
+           ```typescript
+           // Good: Direct initialization with suspense query data
+           const { data: settings } = useSuspenseQuery(
+             trpc.settings.getSettings.queryOptions()
+           );
+
+           const { register, handleSubmit, reset, setValue, watch } = useForm({
+             defaultValues: {
+               setting1: settings?.setting1 ?? defaultValue,
+               setting2: settings?.setting2 ?? defaultValue,
+             }
+           });
+           ```
+         - Keep form state separate from server state during editing
+         - Only sync with server when explicitly saving changes
+         - For discarding changes, reset directly using the initial values:
+           ```typescript
+           // Store initial values for reset
+           const initialValues = React.useMemo(() => ({
+             setting1: settings?.setting1 ?? defaultValue,
+             // other settings...
+           }), [settings]);
+
+           const handleDiscard = () => {
+             reset(initialValues);
+           };
+           ```
+         - After successful save, reset the form with the new data:
+           ```typescript
+           // After successful save
+           await updateSettings(data);
+           reset(data); // Simple reset with new data
+           ```
+
+      12. Pattern: Server Component with Client Components
+         ```typescript
+         // app/settings/page.tsx (Server Component)
+         import { HydrateClient, prefetch, trpc } from '@/trpc/server';
+         import { Suspense } from 'react';
+         import ClientComponent from './_components/client-component.client';
+
+         export default async function SettingsPage() {
+           // Prefetch data for client components
+           prefetch(trpc.user.getUserPreferences.queryOptions());
+
+           return (
+             <HydrateClient>
+               <Suspense fallback={<div>Loading...</div>}>
+                 <ClientComponent />
+               </Suspense>
+             </HydrateClient>
+           );
+         }
+         ```
+
+      13. Pattern: Client Component with Suspense Query
+         ```typescript
+         // _components/client-component.client.tsx
+         'use client';
+
+         import { useTRPC } from '@/trpc/client';
+         import { useSuspenseQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+         export default function ClientComponent() {
+           const trpc = useTRPC();
+           const queryClient = useQueryClient();
+
+           // Access prefetched data with suspense query
+           const { data } = useSuspenseQuery(
+             trpc.user.getUserPreferences.queryOptions()
+           );
+
+           // Mutation with proper error handling
+           const { mutateAsync, isPending } = useMutation(
+             trpc.user.updatePreferences.mutationOptions({
+                onError: (error) => {
+                    // Handle error
+                },
+                onSuccess: () => {
+                    // Invalidate with full query options
+                    queryClient.invalidateQueries(
+                        trpc.user.getUserPreferences.queryOptions()
+                    );
+                }
+             }),
+           );
+
+           return (
+             // Component implementation
+           );
+         }
+         ```
+
+      14. Parameter Consistency for Implementation Functions:
+          - Always use destructured parameters with consistent naming:
+            ```typescript
+            // Good: Consistent destructured parameters
+            export async function getItem({ db, session }: ItemQueryContext) {
+              // Implementation
+            }
+
+            export async function getItemWithInput({
+              db,
+              session,
+              input
+            }: ItemQueryContextWithInput<GetItemInput>) {
+              // Implementation
+            }
+            ```
+          - Keep parameter order consistent across all implementations
+          - Use appropriate context types for each function
+
+      15. Context Reusability Between Query and Mutation:
+          - Consider creating a shared base context when appropriate:
+            ```typescript
+            // shared-types.ts
+            import { Database } from "@/db";
+            import { Session } from "@/lib/auth/types";
+
+            export interface BaseContext {
+              db: Database;
+              session: Session;
+            }
+
+            // Then in queries/types.ts
+            import { BaseContext } from "../shared-types";
+
+            export interface ItemQueryContext extends BaseContext {
+              // Additional query-specific context properties
+            }
+
+            // And in mutations/types.ts
+            import { BaseContext } from "../shared-types";
+
+            export interface ItemMutationContext<T> extends BaseContext {
+              input: T;
+              // Additional mutation-specific context properties
+            }
+            ```
+          - This promotes consistency and reduces duplication
+
+examples:
+  - input: |
+      // Bad: Direct db import and usage
+      import { db } from "@/server/db";
+
+      export const getUser = protectedProcedure.query(async () => {
+        const user = await db.select().from(users);
+        return user;
+      });
+
+      // Good: Using db from context and passing to implementation
+      export const getUser = protectedProcedure.query(async ({ ctx }) => {
+        const { db, session } = ctx;
+        return await getUserImpl({ currentUser: session.user, db });
+      });
+    output: "Always use db from context instead of importing directly"
+
+  - input: |
+      // Bad: Procedure logic mixed with implementation
+      export const getUser = protectedProcedure.query(async ({ ctx }) => {
+        const { db, session } = ctx;
+
+        // Complex implementation directly in the procedure
+        const user = await db.select().from(users).where(eq(users.id, session.user.id));
+        const posts = await db.select().from(posts).where(eq(posts.userId, user.id));
+        return { user, posts };
+      });
+
+      // Good: Clean procedure with implementation in separate file
+      // router.ts
+      export const getUser = protectedProcedure.query(async ({ ctx }) => {
+        const { db, session } = ctx;
+        return await getUserWithPosts({ currentUser: session.user, db });
+      });
+
+      // queries/getUserWithPosts.ts
+      export async function getUserWithPosts({ currentUser, db }) {
+        const user = await db.select().from(users).where(eq(users.id, currentUser.id));
+        const posts = await db.select().from(posts).where(eq(posts.userId, user.id));
+        return { user, posts };
+      }
+    output: "Separate procedure definition from implementation logic"
+
+  - input: |
+      // Bad: Not using protected procedure for authenticated routes
+      export const updateUser = publicProcedure
+        .input(userSchema)
+        .mutation(async ({ input }) => {
+          // Implementation
+        });
+
+      // Good: Using protected procedure for authenticated routes
+      export const updateUser = protectedProcedure
+        .input(userSchema)
+        .mutation(async ({ ctx, input }) => {
+          const { db, session } = ctx;
+          // Implementation with proper auth check
+        });
+    output: "Use protected procedure for authenticated routes and access context properly"
+
+  - input: |
+      // Bad: Using just queryKey for invalidation
+      queryClient.invalidateQueries({
+        queryKey: trpc.user.getUserPreferences.queryKey
+      });
+
+      // Good: Using full queryOptions()
+      queryClient.invalidateQueries(
+        trpc.user.getUserPreferences.queryOptions()
+      );
+    output: "Pass the complete query options to invalidateQueries"
+
+  - input: |
+      // Bad: Not using typed context
+      // mutations/updateItem.ts
+      export async function updateItem(input, db, session) {
+        // Implementation
+      }
+
+      // Good: Using typed context
+      // mutations/types.ts
+      export interface ItemMutationContext<T> {
+        input: T;
+        db: Database;
+        session: Session;
+      }
+
+      // mutations/updateItem.ts
+      import { ItemMutationContext, UpdateItemInput } from "./types";
+
+      export async function updateItem({
+        input,
+        db,
+        session
+      }: ItemMutationContext<UpdateItemInput>) {
+        // Implementation
+      }
+    output: "Use properly typed contexts for implementation functions"
+
+  - input: |
+      // Bad: Different parameter ordering across implementations
+      // queries/getItem.ts
+      export async function getItem(db, session) {
+        // Implementation
+      }
+
+      // queries/getProfile.ts
+      export async function getProfile(session, db) {
+        // Implementation
+      }
+
+      // Good: Consistent destructured parameters
+      // queries/getItem.ts
+      export async function getItem({ db, session }: ItemQueryContext) {
+        // Implementation
+      }
+
+      // queries/getProfile.ts
+      export async function getProfile({ db, session }: ItemQueryContext) {
+        // Implementation
+      }
+    output: "Use consistent parameter patterns with destructuring"
+
+metadata:
+  priority: high
+  version: 1.6
+</rule>

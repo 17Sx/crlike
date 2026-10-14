@@ -1,0 +1,30 @@
+---
+description: Types sûrs et code lisible, adaptés des conventions Agency
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Qualité TypeScript
+
+- Garder le mode strict. Utiliser `unknown` pour une entrée non fiable, puis la
+  valider avec Zod ou un type guard. Ni `any`, ni `as unknown as` pour contourner
+  une incompatibilité.
+- Inférer les données depuis les schémas Zod et les entrées/sorties oRPC.
+  Éviter de maintenir plusieurs interfaces représentant le même contrat.
+- Garder les types près de leur usage. Extraire un contrat partagé seulement
+  lorsqu'il possède plusieurs consommateurs réels.
+- Utiliser des unions discriminées pour les états exclusifs et `satisfies`
+  pour vérifier une configuration sans perdre ses clés littérales.
+- Choisir des noms métier précis et des fonctions à responsabilité unique.
+  Utiliser des retours anticipés pour limiter l'imbrication.
+- Préférer `const`, des transformations sans mutation inutile et des clés stables.
+- Ne pas masquer une erreur avec un catch vide, une valeur de succès de secours
+  ou une suppression de lint. Toute exception doit être ciblée et justifiée.
+- Documenter une contrainte non évidente, pas le fonctionnement trivial du code.
+- Formater seulement les fichiers touchés avec le Prettier installé.
+  Le dépôt ne possède pas de script `pnpm format`.
+
+Exemple : préférer `schema.parse(payload)` à `payload as CreateInput`.
+Une assertion TypeScript ne valide jamais une entrée à l'exécution.
+
+Source : Agency, `global-project-config.mdc` et `typescript-best-practices.mdc`.

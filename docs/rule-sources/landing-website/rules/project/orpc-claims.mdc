@@ -1,0 +1,37 @@
+---
+description: Consommer oRPC avec les API TanStack réellement présentes dans le template
+globs: "apps/web/**/*.ts, apps/web/**/*.tsx"
+alwaysApply: false
+---
+
+# Données côté web
+
+- Importer `orpc`, `RouterInput` et `RouterOutput` depuis `@/orpc/client`.
+- Employer `useQuery(orpc.domain.procedure.queryOptions(...))` et
+  `useMutation(orpc.domain.procedure.mutationOptions(...))`.
+  Les méthodes `orpc.*.useQuery()` et `getQueryKey()` ne sont pas l'API du dépôt.
+- Réutiliser `orpc.domain.procedure.key()` pour l'invalidation. Déclarer
+  `meta.invalidateQueries` dans les options de mutation lorsque nécessaire.
+- Conserver le provider et le QueryClient partagés ; ne pas recréer un client
+  dans chaque composant ni ajouter un fetcher autour de `/api/rpc`.
+- Dans un Server Component, utiliser `api` depuis `@/orpc/server`,
+  qui fournit le contexte de session de la requête.
+- Pour précharger puis hydrater, réutiliser `getQueryClient` et `HydrateClient`
+  de `@/orpc/query/hydration`. Ne pas partager les données privées entre requêtes.
+- Distinguer erreurs métier typées et erreurs inattendues. Ne pas afficher de
+  secrets, de données internes ou de messages techniques bruts au visiteur.
+- Les opérations métier passent par oRPC. Garder les endpoints spécifiques
+  du template (auth, upload, webhooks) pour leurs responsabilités existantes.
+- Ne pas introduire de Server Actions pour contourner ces conventions.
+
+Exemple existant : `apps/web/app/(application)/admin/users/_hooks/use-batch-user-actions.ts`.
+
+```ts
+const mutation = useMutation(
+  orpc.auth.banMultipleUsers.mutationOptions({
+    meta: { invalidateQueries: [orpc.auth.listUsers.key()] },
+  }),
+);
+```
+
+Adapté d'Agency `orpc-rsc-best-practices.mdc`, vérifié contre `apps/web/orpc/client.ts`.

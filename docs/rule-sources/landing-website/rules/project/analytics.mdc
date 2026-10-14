@@ -1,0 +1,143 @@
+---
+description: PostHog analytics integration via @repo/analytics package
+globs: packages/analytics/**, apps/web/**/providers.tsx, apps/realtime/src/app.ts, apps/web/components/cookies/**
+alwaysApply: false
+---
+priority: high
+version: 2025.12.15
+---
+
+# Analytics Package
+
+## Intent
+Centralize PostHog analytics across all apps using the `@repo/analytics` package. This ensures consistent event tracking, typed event definitions, and shared configuration between client and server environments. Includes GDPR-compliant cookie consent management.
+
+## Architecture
+
+### Package Structure
+```
+packages/analytics/
+├── src/
+│   ├── events/index.ts    # Typed event definitions (shared)
+│   ├── client/            # React provider and hooks (apps/web)
+│   │   ├── index.ts
+│   │   └── provider.tsx
+│   └── server/            # Node.js client (apps/realtime)
+│       └── index.ts
+
+apps/web/components/cookies/
+├── cookie-banner.tsx          # GDPR cookie consent banner
+├── cookie-preferences-modal.tsx  # Customization modal
+├── cookie-store.ts            # Zustand store for consent state
+└── index.ts
+```
+
+### Exports
+- `@repo/analytics` - Type definitions
+- `@repo/analytics/events` - Event name and property types
+- `@repo/analytics/client` - React provider and `useAnalytics` hook
+- `@repo/analytics/server` - Server-side tracking functions
+
+## Environment Variables
+
+Both apps use the same environment variable names so the realtime app can inherit them via the discovery process from the web app:
+
+- `NEXT_PUBLIC_POSTHOG_KEY` - PostHog project API key
+- `NEXT_PUBLIC_POSTHOG_HOST` - PostHog host URL (optional, defaults to US cloud)
+
+> **Note**: The `NEXT_PUBLIC_` prefix is a Next.js convention but works fine server-side. Using the same names allows the realtime app to receive these values automatically through discovery.
+
+## Checklist
+
+### Adding New Events
+1. Add the event with its properties to `AnalyticsEventProperties` in `packages/analytics/src/events/index.ts`
+2. The event name is automatically inferred via `keyof AnalyticsEventProperties`
+3. Use `trackEvent` (client) or `trackServerEvent` (server) with full type safety
+
+### Client-Side Usage (apps/web)
+```tsx
+import { useAnalytics } from "@repo/analytics/client";
+
+function MyComponent() {
+  const { trackEvent, identifyUser } = useAnalytics();
+
+  const handleAction = () => {
+    trackEvent("user_signed_in", { method: "email" });
+  };
+}
+```
+
+### Server-Side Usage (apps/realtime)
+```ts
+import { trackServerEvent, identifyUser } from "@repo/analytics/server";
+
+trackServerEvent(userId, "organization_joined", {
+  organizationId: "org_123",
+  organizationName: "Acme Corp",
+  role: "member",
+});
+```
+
+## Examples
+
+### ✅ Good
+Adding a new event (name is inferred from properties):
+```ts
+// In events/index.ts
+export type AnalyticsEventProperties = {
+  user_signed_up: { method: "email" | "oauth" };
+  document_created: { documentId: string; templateUsed: boolean }; // Just add here
+};
+
+// AnalyticsEventName is automatically: "user_signed_up" | "document_created"
+export type AnalyticsEventName = keyof AnalyticsEventProperties;
+```
+
+### ❌ Bad
+Tracking events directly with PostHog without using the shared package:
+```ts
+import posthog from "posthog-js";
+posthog.capture("some_event", { foo: "bar" }); // No type safety, no consistency
+```
+
+### ✅ Good
+Conditionally enabling analytics based on environment:
+```tsx
+<AnalyticsProvider
+  apiKey={env.NEXT_PUBLIC_POSTHOG_KEY ?? ""}
+  enabled={!!env.NEXT_PUBLIC_POSTHOG_KEY}
+>
+```
+
+### ❌ Bad
+Hard-coding API keys or always enabling analytics:
+```tsx
+<AnalyticsProvider apiKey="phc_hardcoded_key" enabled={true}>
+```
+
+## Cookie Consent (GDPR Compliance)
+
+The cookie banner displays when `NEXT_PUBLIC_POSTHOG_KEY` is set and the user hasn't made a choice yet. It offers three options:
+
+- **Accept All**: Enables all cookie categories (necessary, analytics, marketing)
+- **Customize**: Opens modal to toggle individual categories
+- **Reject All**: Only necessary cookies enabled (analytics disabled)
+
+### Cookie Categories
+- `necessary`: Always enabled, cannot be disabled
+- `analytics`: Controls PostHog tracking (opt_in_capturing/opt_out_capturing)
+- `marketing`: Reserved for future marketing integrations
+
+### How Consent Works
+1. `CookieBanner` reads consent state from `useCookieConsentStore` (persisted in localStorage)
+2. When consent changes, it calls `updateConsent()` from `useAnalytics()`
+3. The analytics provider calls `posthog.opt_in_capturing()` or `posthog.opt_out_capturing()` accordingly
+4. PostHog respects consent and won't track until user explicitly opts in
+
+### ✅ Good
+Always wrap cookie banner inside AnalyticsProvider so it can access `updateConsent`:
+```tsx
+<AnalyticsProvider ...>
+  <CookieBanner enabled={!!env.NEXT_PUBLIC_POSTHOG_KEY} />
+</AnalyticsProvider>
+```

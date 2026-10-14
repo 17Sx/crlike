@@ -1,0 +1,340 @@
+---
+description: Forms rules and instructions
+globs:
+alwaysApply: false
+---
+
+# React Hook Form Best Practices
+
+Standards for using React Hook Form. Auto-included for TSX and JSX files.
+
+<rule>
+name: react_hook_form_best_practices
+description: Best practices for using React Hook Form. Auto-included for TSX and JSX files.
+globs: ["**/*.{tsx,jsx}"]
+filters:
+  - type: file_extension
+    pattern: "\\.(tsx|jsx)$"
+actions:
+  - type: suggest
+    message: |
+      Follow these React Hook Form best practices:
+
+      1. Form Setup:
+         - Use proper form initialization
+         - Implement proper validation schema
+         - Use proper default values
+         - Handle form submission properly
+
+      2. Field Registration:
+         - Use register method properly
+         - Implement proper field validation
+         - Handle field errors properly
+         - Use proper field naming
+
+      3. Validation Integration:
+         - Use Zod or Yup integration
+         - Implement custom validation
+         - Handle async validation
+         - Use proper error messages
+
+      4. Performance Optimization:
+         - Use uncontrolled components
+         - Implement proper form watching
+         - Handle form state properly
+         - Use proper re-render optimization
+
+      5. Form State Management:
+         - Handle form submission state
+         - Implement proper error handling
+         - Use proper form reset
+         - Handle form dirty state
+
+examples:
+  - input: |
+      // Bad: Not using form validation
+      const MyForm = () => {
+        const [values, setValues] = useState({});
+        return (
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            // handle submit
+          }}>
+            <input onChange={(e) => setValues({...values, name: e.target.value})} />
+          </form>
+        );
+      };
+
+      // Good: Using React Hook Form with Zod
+      const formSchema = z.object({
+        name: z.string().min(2),
+        email: z.string().email()
+      });
+
+      const MyForm = () => {
+        const form = useForm<z.infer<typeof formSchema>>({
+          resolver: zodResolver(formSchema)
+        });
+
+        return (
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+            <input {...form.register("name")} />
+            {form.formState.errors.name && (
+              <span>{form.formState.errors.name.message}</span>
+            )}
+          </form>
+        );
+      };
+    output: "Use React Hook Form with proper validation schema"
+
+  - input: |
+      // Bad: Using controlled components
+      const MyInput = () => {
+        const [value, setValue] = useState("");
+        return (
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        );
+      };
+
+      // Good: Using uncontrolled components with React Hook Form
+      const MyInput = () => {
+        const { register, formState: { errors } } = useFormContext();
+        return (
+          <>
+            <input {...register("fieldName")} />
+            {errors.fieldName && (
+              <span>{errors.fieldName.message}</span>
+            )}
+          </>
+        );
+      };
+    output: "Use uncontrolled components for better performance"
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>
+
+# Forms rules and instructions
+
+Best practices for handling forms with React Hook Form in Next.js applications, especially with tRPC.
+
+<rule>
+name: react_hook_form_best_practices
+description: Best practices for using React Hook Form with tRPC and Next.js. Auto-included for TSX files.
+globs: ["**/*.tsx"]
+filters:
+  - type: file_extension
+    pattern: "\\.tsx$"
+  - type: content
+    pattern: "(?:useForm|Controller|register|handleSubmit|FormProvider)"
+actions:
+  - type: suggest
+    message: |
+      Follow these React Hook Form best practices:
+
+      1. Form Setup:
+         - Use the `useForm` hook with explicit TypeScript typing
+         - Define Zod schemas for validation
+         - Use zodResolver for form validation
+         - Initialize defaultValues directly from suspense queries when possible
+         - Set sensible fallback values with the nullish coalescing operator (??)
+
+      2. Form-Server Data Flow:
+         - For client components with suspense queries:
+           * Initialize form directly from query data
+           * No need for a useEffect to reset form when data changes
+           * Keep initial values in React.useMemo for reset functionality
+
+         ```typescript
+         // Good pattern for client components with suspense queries
+         const { data: settings } = useSuspenseQuery(
+           trpc.settings.getSettings.queryOptions()
+         );
+
+         // Store initial values for reset
+         const initialValues = React.useMemo(() => ({
+           setting1: settings?.setting1 ?? defaultValue,
+           setting2: settings?.setting2 ?? defaultValue,
+         }), [settings]);
+
+         const { register, handleSubmit, reset } = useForm({
+           resolver: zodResolver(formSchema),
+           defaultValues: {
+             setting1: settings?.setting1 ?? defaultValue,
+             setting2: settings?.setting2 ?? defaultValue,
+           }
+         });
+         ```
+
+      3. Form Controls:
+         - Use register for simple inputs:
+           ```typescript
+           <input {...register("fieldName")} />
+           ```
+         - Use Controller for complex components:
+           ```typescript
+           <Controller
+             name="fieldName"
+             control={control}
+             render={({ field }) => <Select {...field} />}
+           />
+           ```
+         - For controlled components like switches, combine register with watch:
+           ```typescript
+           <Switch.Root
+             id={`field-id`}
+             checked={watch("fieldName")}
+             onCheckedChange={(checked) => setValue("fieldName", checked, { shouldDirty: true })}
+             {...register("fieldName")}
+           />
+           ```
+
+      4. Form Submission:
+         - Use handleSubmit to process form data
+         - Clear error state before submission
+         - Use try/catch for error handling
+         - Reset form with new data after successful submission
+         - Invalidate queries with full queryOptions():
+
+         ```typescript
+         const onSubmit = async (data: FormValues) => {
+           setError(null);
+           try {
+             await updateData(data);
+             reset(data); // Reset with new values
+             queryClient.invalidateQueries(trpc.data.getData.queryOptions());
+           } catch (error) {
+             setError(getErrorMessage(error));
+           }
+         };
+         ```
+
+      5. Form Reset and Discard:
+         - Implement a discard function using stored initial values:
+           ```typescript
+           const handleDiscard = () => {
+             reset(initialValues);
+             setError(null);
+           };
+           ```
+         - Disable discard button when form is not dirty:
+           ```typescript
+           <Button
+             disabled={!isDirty || isSubmitting}
+             onClick={handleDiscard}
+           >
+             Discard
+           </Button>
+           ```
+
+      6. Form State Management:
+         - Use formState for tracking form status:
+           * isDirty - Has the form changed?
+           * isSubmitting - Is the form currently submitting?
+           * errors - Validation errors
+         - Use these states for UI feedback:
+           ```typescript
+           <SaveButton
+             isDirty={isDirty}
+             isPending={isSubmitting}
+             type="submit"
+           />
+           ```
+
+      7. Error Handling:
+         - Display form-level errors with a global message component
+         - Show field-level errors below each input
+         - Provide clear error messages from both client and server validation
+
+examples:
+  - input: |
+      // Bad: Unnecessary useEffect for form reset with suspense query
+      const { data: settings } = useSuspenseQuery(trpc.settings.getSettings.queryOptions());
+
+      const { register, reset } = useForm({
+        defaultValues: initialValues // Defined elsewhere
+      });
+
+      React.useEffect(() => {
+        if (settings) {
+          reset({
+            setting1: settings.setting1,
+            setting2: settings.setting2,
+          });
+        }
+      }, [settings, reset]);
+
+      // Good: Direct initialization with suspense query data
+      const { data: settings } = useSuspenseQuery(trpc.settings.getSettings.queryOptions());
+
+      const initialValues = React.useMemo(() => ({
+        setting1: settings?.setting1 ?? defaultValue,
+        setting2: settings?.setting2 ?? defaultValue,
+      }), [settings]);
+
+      const { register, handleSubmit, reset } = useForm({
+        defaultValues: {
+          setting1: settings?.setting1 ?? defaultValue,
+          setting2: settings?.setting2 ?? defaultValue,
+        }
+      });
+    output: "Initialize forms directly from suspense query data without unnecessary useEffect"
+
+  - input: |
+      // Bad: Using just queryKey for invalidation after form submission
+      const onSubmit = async (data: FormValues) => {
+        try {
+          await updateSettings(data);
+          queryClient.invalidateQueries({
+            queryKey: trpc.settings.getSettings.queryKey
+          });
+        } catch (error) {
+          // Error handling
+        }
+      };
+
+      // Good: Using full queryOptions() for invalidation
+      const onSubmit = async (data: FormValues) => {
+        try {
+          await updateSettings(data);
+          reset(data); // Reset with new values
+          queryClient.invalidateQueries(trpc.settings.getSettings.queryOptions());
+        } catch (error) {
+          // Error handling
+        }
+      };
+    output: "Reset form with new data and use full queryOptions() for invalidation after submission"
+
+  - input: |
+      // Bad: No proper handling for discard
+      const handleDiscard = () => {
+        reset();
+      };
+
+      // Good: Proper discard implementation
+      const initialValues = React.useMemo(() => ({
+        setting1: settings?.setting1 ?? defaultValue,
+        setting2: settings?.setting2 ?? defaultValue,
+      }), [settings]);
+
+      const handleDiscard = () => {
+        reset(initialValues);
+        setError(null);
+      };
+
+      <Button
+        disabled={!isDirty || isSubmitting}
+        onClick={handleDiscard}
+      >
+        Discard
+      </Button>
+    output: "Implement proper discard functionality with stored initial values"
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>

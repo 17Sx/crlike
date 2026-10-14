@@ -1,0 +1,113 @@
+---
+description: Procédures oRPC structurées et autorisation serveur du back-office
+globs: "packages/server/**/*.ts"
+alwaysApply: false
+---
+
+priority: high
+version: 2026.09.25
+
+---
+
+# Structure backend
+
+- Vocabulaire : un **module** est un dossier de `packages/server/src/routers/`,
+  qui regroupe les procédures d'un besoin métier. Avant un nouveau module,
+  consulter les scènes Excalidraw MCP référencées dans `docs/decisions.md` et
+  préciser ses frontières dans le ticket de cadrage.
+- Placer chaque module dans `packages/server/src/routers/<module>` :
+  `router.ts`, `validators.ts`, puis `queries/` et `mutations/` selon les
+  besoins. Les contrats utilisés hors du module (autre module, client web)
+  vont dans `public/validators.ts`, comme pour le blog.
+- Frontières (Excalidraw « Architecture 13 / 14 », LDW-31) : le dossier
+  `public/` (ou un fichier `public.ts`) est la seule porte d'entrée d'un module
+  pour les autres modules et les exports du package, à une exception près :
+  l'assemblage `routers/_app.ts` (export racine du package) monte directement
+  `<module>/router`, et rien dans le package n'importe l'assemblage. Le reste
+  du module lui est privé. `public/` ne contient que des contrats purs : Zod,
+  les valeurs de `@repo/shared` et d'autres fichiers `public/`, sans base, Next
+  ni SDK fournisseur. Les imports directs entre
+  modules ne forment pas de cycle, et le package ne s'importe pas lui-même par
+  `@repo/server`. Contrôlé par `doctor` (`orpc/module-boundaries`).
+- Chaque module a un domaine de données, dont les tables sont dans
+  `packages/database/schema/<domaine>/`, et peut en lire d'autres s'ils sont
+  déclarés : `.doctor/config/data-domains` (`<module> <domaine> [<domaine
+  lisible>...]`). Il n'écrit (insert, update, delete) que dans son domaine ;
+  l'écriture (ou le verrou) d'une autre donnée passe par une commande du
+  module propriétaire, dans `routers/<module>/commands/` (LDW-43). Une
+  commande vérifie elle-même le droit de l'acteur qu'elle reçoit
+  (`hasActorPermission`) et répond un résultat discriminé (`{ ok: false,
+  error }`), dont le contrat (entrée, codes d'erreur) est dans `public/`. Un
+  parcours qui traverse plusieurs modules vit dans
+  `packages/server/src/journeys/<parcours>/`, monté par `routers/_app.ts` :
+  il n'importe que les `commands/` et `public/` des modules, les procédures
+  partagées et `context`, ne touche jamais la base lui-même et ouvre au plus
+  la transaction que ses commandes partagent (`orpc/module-boundaries`). Une
+  migration ne touche qu'un domaine. Contrôles statiques
+  `doctor` (`orpc/data-domains`, `drizzle/migration-domains`) ; leurs limites
+  sont dans `docs/decisions.md`.
+- Conventions de données (`docs/data-conventions.md`, LDW-32) : un module
+  renseigne `createdBy` / `updatedBy` avec l'utilisateur de la session et
+  n'efface pas une ligne métier ; `delete` est réservé aux tables de
+  `.doctor/config/hard-delete-tables` (`orpc/data-domains`). Schéma :
+  montants en centimes avec devise, `timestamp` avec fuseau, colonnes d'audit
+  (`drizzle/data-conventions`).
+- Une opération par fichier kebab-case, avec `<name>Base` et `<name>Handler`.
+  Les `index.ts` de queries/mutations agrègent les opérations du module.
+- Garder `router.ts` déclaratif : base, méthode HTTP, métadonnées et
+  `call(handler, input, { context })`. Pas de logique métier ou SQL dans le router.
+- Déclarer les entrées Zod dans `validators.ts` (ou `public/validators.ts`),
+  puis les utiliser avec `.input()`.
+  Valider pagination, limites, filtres et identifiants venant du client.
+- Choisir la procédure la plus restrictive adaptée dans `packages/server/src/procedure`.
+  Une opération réservée à des rôles plateforme (`admin`, `agency`,
+  `contributor`, `client`) utilise `adminProcedure` et `.meta({ roles: [...] })` ;
+  une opération liée à une permission, `userPermissionProcedure` et
+  `.meta({ userPermission })`. Les deux relisent rôle et permissions en base,
+  pas dans la session en cache (LDW-33).
+- Pour une ressource d'organisation, déclarer les permissions requises et filtrer
+  les requêtes par `context.activeOrganization.id`. Un ID fourni par le client
+  ne prouve ni l'appartenance ni le droit d'accès à la ressource.
+- Attention : le middleware d'organisation actuel ne vérifie les permissions
+  que si elles sont déclarées. Ne pas assimiler organisation active et autorisation.
+- Rôle Postgres par module (LDW-44) : chaque procédure part d'une base du
+  module qui ajoute `moduleDatabaseMiddleware("<module>")` (une transaction
+  par appel sous `module_<module>`), ou `moduleTransactionsMiddleware` quand
+  elle appelle un fournisseur après ses écritures (`db.transaction()` seul).
+  Une commande `commands/` s'exécute dans `withModuleDatabase(db,
+"<module>", …)`. Après un changement de `data-domains`, `hard-delete-tables`,
+  `private-tables` ou `append-only-tables`, lancer `pnpm db:access:generate` et relire le SQL.
+  Les tables `private-tables` ne sont lisibles que par leur domaine ; celles
+  de `append-only-tables` ne peuvent être modifiées ni effacées (LDW-73).
+  Pas de `SET ROLE`, `set_config('role'` ni `sql.raw` dans un module ; une
+  violation d'unicité interceptée puis contournée se fait dans un savepoint
+  (`db.transaction()` imbriqué). Contrôles `orpc/module-database`,
+  `drizzle/module-access`.
+- Utiliser `context.db` dans les handlers. Centraliser les services externes
+  réutilisables dans `packages/server/src/services`, pas dans les composants.
+- Déclarer les erreurs partagées sur `packages/server/src/context.ts` et les erreurs métier
+  spécifiques sur la base de l'opération. Lever `errors.NOM_METIER()` avec
+  un statut approprié. Ne pas redéfinir les erreurs dans le router.
+- Pas de catch qui masque une erreur. Un catch n'est justifié que pour traduire
+  précisément une erreur externe ou assurer un nettoyage nécessaire.
+- Paginer les listes, limiter les champs retournés et utiliser une transaction
+  lorsque plusieurs écritures doivent réussir ensemble.
+- Raccorder les modules dans `packages/server/src/routers/_app.ts`.
+- Tester accès anonyme, mauvais rôle, autre organisation, entrée invalide et succès.
+
+Exemples du template : `packages/server/src/routers/auth/queries/list-users.ts` pour la procédure,
+`packages/server/src/routers/auth/router.ts` pour le raccordement.
+
+Adapté d'Agency `orpc-rsc-best-practices.mdc`. Ici, les contrats restent dans
+`packages/server` et la base dans `packages/database` : ne pas importer
+`@repo/contracts`, `@repo/db` ou `apps/web/server`, absents de ce dépôt.
+
+## Assemblage de jobs (LDW-45)
+
+`src/workers.ts`, export `@repo/server/workers`, assemble les seules entrées
+`commercial/worker/outbox`, `finance/worker/retry-pennylane-customers` et
+`notifications/worker/consume-sale-reopened`.
+Doctor contrôle cette exception explicite : elle n’autorise aucun autre import
+privé, aucune écriture hors du domaine propriétaire ni import de l’assemblage
+par les modules. Les contrats événementiels restent purs dans `public/`.
+L’hôte Trigger.dev (`apps/jobs`) importe cet export, pas les modules privés.

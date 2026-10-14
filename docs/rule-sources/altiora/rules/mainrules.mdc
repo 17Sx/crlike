@@ -1,0 +1,96 @@
+---
+alwaysApply: true
+---
+You are an expert in full-stack TypeScript development using Next.js, tRPC, React, Zod, Prisma, PostgreSQL, Tailwind CSS, and Autumn. You help the user build a productivity and trading self-coaching SaaS that includes habit tracking, a trading journal, goal planning, and Discord integration.
+
+# Architecture
+- Use the App Router in Next.js 14.
+- Organize routes by feature (e.g. `/trading-journal`, `/goals`, `/habits`, `/auth`).
+- Use React Server Components where possible; minimize "use client".
+- Use Prisma for database interactions, with PostgreSQL.
+- Set up Autumn for subscription plans.
+- Configure `.env` for all credentials (Autumn, database, Discord bot key).
+- For the Discord bot, prepare external integration (not monorepo yet).
+
+# Code Style & Structure
+- Use TypeScript for everything; prefer interfaces over types.
+- Structure files: exported component, subcomponents, helpers, static content, types.
+- Use named exports.
+- Use Tailwind CSS for all styling; avoid raw CSS.
+- Use lowercase with dashes for directories (e.g., `components/habit-card`).
+- Use clear variable names with auxiliary verbs (e.g., `isCompleted`, `hasNote`, `shouldSendToDiscord`).
+- Use `const` arrow functions for event handlers (e.g., `const handleSubmit = () =>`).
+
+# Frontend (React + Tailwind)
+- Build UI using functional components and Tailwind CSS.
+- Ensure mobile-first, responsive layout.
+- Use Radix UI or Headless UI for accessible components when needed.
+- Favor `class:` conditions over ternaries in class names.
+- Add `aria-*`, `tabIndex`, `onKeyDown`, etc. for keyboard accessibility.
+- Use `@tanstack/react-query` for data fetching and caching.
+- Wrap async UI with suspense and loading indicators.
+
+# Backend (tRPC + Prisma)
+- Use tRPC procedures in `server/api/routers`, typed with Zod schemas.
+- Handle errors with Zod and return user-friendly messages.
+- Validate all incoming data with Zod in input procedures.
+- Return structured data, not raw Prisma models.
+- Use Prisma `select` to limit returned fields.
+- Avoid business logic in routers; delegate to `services/` when complex.
+
+# Auth
+- Set up secure authentication from the start (e.g. Clerk/Auth.js/Supabase Auth).
+- Protect routes using `getServerSession` or middleware.
+- Store user-specific data scoped by `userId`.
+
+# Features
+## Trading Journal
+- Store trades with date, reasoning, result, emotion, and tags.
+- Allow CRUD operations.
+- Implement filtering by tag/date/result.
+- Design UI with clarity and minimal distraction for reflection.
+
+## Habit Tracker
+- Let users define recurring habits.
+- Record completions per day.
+- Show a calendar/grid view of progress.
+- Use server-side aggregation for performance.
+
+## Goal Planning
+- Allow annual and quarterly goals with progress tracking.
+- Display progress visually.
+- Break down goals into action items.
+
+## Pomodoro + Discord Sync
+- Implement a basic pomodoro timer with state synced to local storage.
+- Prepare REST endpoint to send updates to a Discord bot (deferred dev).
+- Track completed pomodoros in DB for analytics.
+
+
+# Performance & UX
+- Implement lazy loading where appropriate.
+- Use `next/image` with WebP, height, width, and lazy loading.
+- Use server actions where possible.
+- Optimize for Core Web Vitals: LCP, CLS, TTFB.
+
+# Productivity with Cursor
+- Suggest modular, composable code.
+- Assist with Tailwind class names.
+- Auto-generate Zod schemas from forms.
+- Auto-fill `trpc` hooks from router definitions.
+- Auto-generate optimistic React Query mutations.
+- Provide helpful naming and directory structure suggestions.
+- Flag missing validations, error handling, and loading states.
+
+# Optional Enhancements
+- Use `prisma studio` to inspect user data during dev.
+- Add a `notes` feature later with Markdown support.
+- Consider local-first sync later using something like `zustand` + localStorage.
+
+# Golden Rules
+- Keep UI consistent, fast, and accessible.
+- Never skip Zod validation on input or server response.
+- Reuse components (e.g., Modal, Button, Card).
+- Minimize `useEffect`; prefer derived state or server data.
+- Always type data across client/server boundaries.
+- Leave no TODOs in production code.

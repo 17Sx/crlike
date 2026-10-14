@@ -1,0 +1,105 @@
+---
+description: Keep Cursor rules synchronized with evolving architectural decisions
+alwaysApply: true
+---
+
+priority: high
+version: 2025.11.21
+
+---
+
+# Cursor Rule Sync
+
+## Intent
+
+`AGENTS.md` is the canonical record for repo-wide agent conventions. Record product and architectural decisions with their rationale in `docs/decisions.md`. Cursor rules provide focused technical details and must remain consistent with those documents and the current code. Update the relevant source instead of duplicating every decision across files.
+
+## When It Applies
+
+- Creating or modifying architectural layers (e.g., data loaders, design system primitives, cross-service gateways).
+- Introducing new libraries or runtime dependencies that change how teams build features.
+- Changing build, deployment, or automation pipelines that alter required contributor workflow.
+- Establishing repository-wide naming, folder, or ownership conventions.
+- Deprecating core patterns so teams know what to avoid moving forward.
+
+## How to Write a Cursor Rule
+
+1. Add a front-matter block:
+   - `description`: one sentence describing the decision.
+   - `globs`: comma-separated list of affected paths (skip when `alwaysApply: true`).
+   - `alwaysApply`: set to `true` only for universal rules.
+2. Follow with metadata:
+   - `priority`: `high`, `medium`, or `low`.
+   - `version`: current date in `YYYY.MM.dd`.
+3. Structure the body with Markdown-only sections (no `<rule>` blocks):
+   - `# Title`
+   - `## Intent`, `## Checklist`, `## Details`, `## Examples` as needed.
+4. Provide Good/Bad examples using fenced code blocks or short prose that mirrors real files.
+5. Capture ripple effects (scripts to run, env vars to set, packages to import) so downstream contributors can follow the same workflow.
+6. Keep instructions actionable: each bullet should tell the reader what to do, not just why it matters.
+
+### Example Template
+
+```
+---
+description: Enforce shared env package
+globs: package.json, apps/web/**/*.ts, packages/server/**/*.ts
+alwaysApply: false
+---
+priority: high
+version: 2025.11.21
+---
+
+# Shared Env Package
+
+## Intent
+Explain why the pattern exists.
+
+## Checklist
+- Step 1
+- Step 2
+
+## Examples
+### ✅ Good
+code snippet
+
+### ❌ Bad
+code snippet
+```
+
+## Checklist
+
+1. Review existing `.cursor/rules` to avoid duplicating or contradicting current guidance.
+2. Implement the architectural change in code and capture the reasoning while context is fresh.
+3. Update `AGENTS.md` for common conventions, `docs/decisions.md` for decisions and rationale, or the matching `.mdc` rule for technical details. Keep these sources consistent in the same change.
+4. Highlight ripple effects (required scripts, environment variables, folder ownership) so downstream teams can follow them.
+5. For documentation-only changes, check formatting and referenced paths. Run `pnpm checks` when accompanying code changes require the full validation suite.
+
+## Examples
+
+### ✅ Good
+
+Introducing a shared caching layer under `packages/server/cache` and adding a rule that explains cache key naming, invalidation strategy, and the required environment variables.
+
+### ❌ Bad
+
+Shipping a new layout system in `packages/ui` without documenting token usage or breakpoint rules, forcing every consumer to rediscover the constraints.
+
+### ✅ Good (Markdown-Only)
+
+```
+## Checklist
+- Create `packages/ui/src/theme/tokens.ts`.
+- Import the tokens in `apps/web/tailwind.config`.
+```
+
+Uses plain Markdown sections and gives direct instructions.
+
+### ❌ Bad (YAML-Only)
+
+```
+actions:
+  - doThis: true
+```
+
+Pure YAML blocks hide context and make it unclear who needs to act, so the rule becomes unusable.

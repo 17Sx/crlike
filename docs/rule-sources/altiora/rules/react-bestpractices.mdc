@@ -1,0 +1,191 @@
+---
+description: Best practices for React development
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# React Best Practices
+
+Standards for React development. Auto-included for TSX and JSX files.
+
+<rule>
+name: react_best_practices
+description: Best practices for React development. Auto-included for TSX and JSX files.
+globs: ["**/*.{tsx,jsx}"]
+filters:
+  - type: file_extension
+    pattern: "\\.(tsx|jsx)$"
+actions:
+  - type: suggest
+    message: |
+      Follow these React best practices:
+
+      1. Component Architecture:
+         - Use functional components with hooks instead of class components
+         - Keep components small and focused on a single responsibility
+         - Extract reusable logic into custom hooks
+         - Follow the principle of composition over inheritance
+
+      2. Performance Optimization:
+         - Use React.memo for expensive components
+         - Implement useMemo for expensive computations
+         - Use useCallback for function props
+         - Avoid unnecessary re-renders
+         - Implement proper key props in lists
+         - Use pure components with proper memoization:
+           ```typescript
+           // Bad: Component without memoization that re-renders unnecessarily
+           const UserList = ({ users }) => {
+             return (
+               <ul>
+                 {users.map(user => <UserCard key={user.id} user={user} />)}
+               </ul>
+             );
+           };
+
+           // Good: Component with React.memo and proper comparison
+           import { memo } from 'react';
+           import isEqual from 'fast-deep-equal';
+
+           const UserCard = ({ user }) => {
+             return (
+               <div className="card">
+                 <h3>{user.name}</h3>
+                 <p>{user.email}</p>
+               </div>
+             );
+           };
+
+           // Use fast-deep-equal for complex objects/arrays
+           export const MemoizedUserCard = memo(UserCard, (prevProps, nextProps) => {
+             return isEqual(prevProps.user, nextProps.user);
+           });
+
+           // For simple prop comparisons, you can omit the second argument
+           export const SimpleMemoizedUserCard = memo(UserCard);
+           ```
+         - Apply memoization strategically:
+           * Memoize components that render often but change infrequently
+           * Memoize expensive calculations
+           * Memoize event handlers passed to child components
+           * Avoid premature memoization for simple components
+         - Use fast-deep-equal for complex props comparison:
+           ```typescript
+           // Bad: Not memoizing properly (reference equality won't work for objects)
+           const MemoizedComponent = React.memo(ExpensiveComponent);
+
+           // Good: Using fast-deep-equal for proper deep comparison
+           import isEqual from 'fast-deep-equal';
+
+           const MemoizedComponent = React.memo(ExpensiveComponent, (prev, next) => {
+             // Only re-render if the props are deeply equal
+             return isEqual(prev, next);
+             // Or to invert the logic (re-render if NOT equal):
+             // return !isEqual(prev, next);
+           });
+           ```
+
+      3. State Management:
+         - Use useState for local component state
+         - Implement useReducer for complex state logic
+         - Use Context API for global state when appropriate
+         - Keep state as close as possible to where it's used
+
+      4. Type Safety:
+         - Use TypeScript for prop type definitions
+         - Implement proper interface definitions
+         - Use proper event types for handlers
+         - Define explicit return types for functions
+
+      5. Code Organization:
+         - Group related components in feature folders
+         - Separate business logic from UI components
+         - Use proper naming conventions
+         - Implement proper file structure
+
+examples:
+  - input: |
+      // Bad: Class Component
+      class UserProfile extends React.Component {
+        render() {
+          return <div>{this.props.name}</div>
+        }
+      }
+
+      // Good: Functional Component
+      const UserProfile = ({ name }: { name: string }) => {
+        return <div>{name}</div>
+      }
+    output: "Use functional components with hooks instead of class components"
+
+  - input: |
+      // Bad: Inline function causing re-renders
+      <button onClick={() => handleClick(id)}>Click me</button>
+
+      // Good: Memoized callback
+      const handleClick = useCallback((id) => {
+        // handle click
+      }, []);
+    output: "Use useCallback for function props to prevent unnecessary re-renders"
+
+  - input: |
+      // Bad: Component that re-renders unnecessarily with complex objects
+      const UserDetails = ({ user }) => {
+        return (
+          <div>
+            <h2>{user.name}</h2>
+            <p>{user.email}</p>
+            <UserSettings settings={user.settings} />
+          </div>
+        );
+      };
+
+      // Good: Memoized component with fast-deep-equal
+      import { memo } from 'react';
+      import isEqual from 'fast-deep-equal';
+
+      const UserDetails = ({ user }) => {
+        return (
+          <div>
+            <h2>{user.name}</h2>
+            <p>{user.email}</p>
+            <UserSettings settings={user.settings} />
+          </div>
+        );
+      };
+
+      export const MemoizedUserDetails = memo(UserDetails, (prev, next) => {
+        // Only re-render if user object deeply changes
+        return isEqual(prev.user, next.user);
+      });
+    output: "Use memo with fast-deep-equal for proper deep comparison of complex props"
+
+  - input: |
+      // Bad: Expensive calculation recalculated on every render
+      const ExpensiveComponent = ({ data }) => {
+        const processedData = expensiveCalculation(data);
+        return <div>{processedData}</div>;
+      };
+
+      // Good: Memoized calculation
+      const MemoizedExpensiveComponent = ({ data }) => {
+        const processedData = useMemo(() => expensiveCalculation(data), [data]);
+        return <div>{processedData}</div>;
+      };
+
+      // Even better: Component with both memo and useMemo
+      const ExpensiveComponent = ({ data }) => {
+        const processedData = useMemo(() => expensiveCalculation(data), [data]);
+        return <div>{processedData}</div>;
+      };
+
+      export const MemoizedExpensiveComponent = memo(
+        ExpensiveComponent,
+        (prev, next) => isEqual(prev.data, next.data)
+      );
+    output: "Use both useMemo for calculations and memo for component rendering when dealing with expensive operations"
+
+metadata:
+  priority: high
+  version: 1.1
+</rule>

@@ -1,0 +1,169 @@
+---
+description: Best practices for using Zod for schema validation
+globs:
+alwaysApply: false
+---
+
+# Zod Best Practices
+
+Standards for using Zod schema validation. Auto-included for TypeScript and TSX files.
+
+<rule>
+name: zod_best_practices
+description: Best practices for using Zod for schema validation. Auto-included for TypeScript and TSX files.
+globs: ["**/*.{ts,tsx}"]
+filters:
+  - type: file_extension
+    pattern: "\\.(ts|tsx)$"
+actions:
+  - type: suggest
+    message: |
+      Follow these Zod best practices:
+
+      1. Schema Definition:
+         - Define clear and descriptive schemas
+         - Use proper type inference
+         - Implement proper validation rules
+         - Use schema composition
+
+      2. Validation Implementation:
+         - Use proper error handling
+         - Implement custom validation logic
+         - Use refinements when needed
+         - Handle async validation properly
+
+      3. Type Integration:
+         - Use infer types from schemas
+         - Implement proper type safety
+         - Use proper type coercion
+         - Handle optional fields properly
+
+      4. Form Integration:
+         - Use with React Hook Form
+         - Implement proper form validation
+         - Handle form submission properly
+         - Use proper error messages
+
+      5. API Integration:
+         - Validate API responses
+         - Implement request validation
+         - Handle validation errors
+         - Use proper error messages
+
+      6. Validator Organization:
+         - Place validators not linked to database schemas in the `/validators` folder
+         - Organize by feature or domain:
+           ```
+           /validators
+             /auth
+               register.ts
+               login.ts
+             /user
+               profile.ts
+               settings.ts
+             /forms
+               contact.ts
+               feedback.ts
+           ```
+         - For database-related validators, use Drizzle Zod integration:
+           ```typescript
+           // For DB schema validators
+           import { createInsertSchema } from 'drizzle-zod';
+           import { users } from '@/server/db/schema';
+
+           export const insertUserSchema = createInsertSchema(users);
+
+           // For non-DB validators (in /validators folder)
+           // /validators/forms/contact.ts
+           import { z } from 'zod';
+
+           export const contactFormSchema = z.object({
+             name: z.string().min(2, "Name must be at least 2 characters"),
+             email: z.string().email("Invalid email format"),
+             message: z.string().min(10, "Message must be at least 10 characters"),
+           });
+
+           export type ContactFormValues = z.infer<typeof contactFormSchema>;
+           ```
+         - Export type definitions alongside schemas
+         - Create and export error handling utilities for Zod errors
+
+examples:
+
+- input: |
+  // Bad: Not using Zod for type safety
+  interface User {
+  name: string;
+  age: number;
+  email: string;
+  }
+
+  // Good: Using Zod schema with validation
+  const UserSchema = z.object({
+  name: z.string().min(2),
+  age: z.number().min(0).max(120),
+  email: z.string().email()
+  });
+
+  type User = z.infer<typeof UserSchema>;
+  output: "Use Zod schemas for runtime validation and type inference"
+
+- input: |
+  // Bad: Manual validation
+  function validateEmail(email: string) {
+  return email.includes('@');
+  }
+
+  // Good: Using Zod refinements
+  const EmailSchema = z.string().email().refine(
+  async (email) => {
+  const isUnique = await checkEmailUnique(email);
+  return isUnique;
+  },
+  {
+  message: "Email already exists"
+  }
+  );
+  output: "Use Zod refinements for custom validation logic"
+
+- input: |
+  // Bad: Not organizing validators properly
+  // Scattered across different files
+
+  // components/contact-form.tsx
+  const contactSchema = z.object({
+  name: z.string(),
+  email: z.string().email(),
+  message: z.string()
+  });
+
+  // app/page.tsx
+  const searchParamsSchema = z.object({
+  q: z.string().optional(),
+  page: z.coerce.number().default(1)
+  });
+
+  // Good: Organized validators
+  // /validators/forms/contact.ts
+  export const contactSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email format"),
+  message: z.string().min(10, "Message must be at least 10 characters")
+  });
+
+  export type ContactForm = z.infer<typeof contactSchema>;
+
+  // /validators/search-params.ts
+  export const searchParamsSchema = z.object({
+  q: z.string().optional(),
+  page: z.coerce.number().default(1),
+  sortBy: z.enum(["date", "name", "relevance"]).default("relevance")
+  });
+
+  export type SearchParams = z.infer<typeof searchParamsSchema>;
+  output: "Organize validators in the /validators folder by feature"
+
+metadata:
+priority: high
+version: 1.1
+</rule>

@@ -1,0 +1,17 @@
+---
+description: Procédures oRPC adaptées de landing-website, en remplacement du tRPC d'Altiora
+globs: "src/server/**/*.ts,src/lib/orpc/**/*.ts,src/app/api/**/*.ts"
+alwaysApply: false
+---
+
+# oRPC
+
+- Monter les routers dans src/server/router.ts et le handler dans /api/rpc.
+- Isoler le code serveur avec server-only ; importer uniquement ses types côté client.
+- Valider les entrées externes avec Zod, borner listes, identifiants et nombres.
+- Regrouper les procédures par besoin métier ; séparer la logique complexe du transport.
+- Garder contrats partagés purs, sans Next.js ni accès aux données.
+- Utiliser le client partagé de src/lib/orpc/client.ts dans le navigateur.
+- Vérifier les droits côté serveur lorsque des ressources privées sont introduites.
+- Ne pas exposer de secrets ; retourner uniquement les champs nécessaires.
+- Une erreur doit rester une erreur et être présentée clairement au joueur.

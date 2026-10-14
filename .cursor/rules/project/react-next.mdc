@@ -1,0 +1,17 @@
+---
+description: React et Next.js adaptés d'Altiora et landing-website
+globs: "src/**/*.tsx"
+alwaysApply: false
+---
+
+# React et Next.js
+
+- App Router et Server Components par défaut ; use client aux frontières interactives.
+- Colocaliser les composants de page dans _components et garder les fichiers kebab-case.
+- Utiliser les API Next.js asynchrones comme prévu par la version installée.
+- État local par défaut, valeurs dérivées au rendu, effets uniquement pour synchronisation externe.
+- Nettoyer les abonnements et ressources ; clés métier stables dans les listes.
+- Réutiliser src/components/ui, les tokens Tailwind et cn depuis @/lib/utils.
+- Prévoir navigation clavier, focus, labels, mobile et états chargement/vide/erreur.
+- React Hook Form et Zod pour les futurs formulaires métier si nécessaires.
+- Optimiser les rendus seulement pour un coût identifié.

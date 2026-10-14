@@ -1,0 +1,88 @@
+---
+description: Standards for TypeScript development.
+globs:
+alwaysApply: false
+---
+
+# TypeScript Best Practices
+
+Standards for TypeScript development. Auto-included for TypeScript and TSX files.
+
+<rule>
+name: typescript_best_practices
+description: TypeScript coding standards and type safety guidelines. Auto-included for TypeScript and TSX files.
+globs: ["**/*.{ts,tsx}"]
+filters:
+  - type: file_extension
+    pattern: "\\.(ts|tsx)$"
+actions:
+  - type: suggest
+    message: |
+      Follow these TypeScript best practices:
+
+      1. Type Safety Configuration:
+         - Enable strict mode in tsconfig.json
+         - Use noImplicitAny for better type inference
+         - Enable strictNullChecks for null safety
+         - Implement strict property initialization
+
+      2. Type Definitions:
+         - Use interfaces for object shapes
+         - Implement type aliases for unions/intersections
+         - Define explicit return types for functions
+         - Use generics for reusable type patterns
+
+      3. Type Utilities:
+         - Leverage built-in utility types (Partial, Pick, etc.)
+         - Use type guards for runtime type checking
+         - Implement mapped types for type transformations
+         - Use conditional types when appropriate
+
+      4. Type Organization:
+         - Keep type definitions close to their usage
+         - Create separate type declaration files when needed
+         - Use namespaces sparingly
+         - Prefer union types over enums
+
+      5. Type Best Practices:
+         - Avoid type assertions unless necessary
+         - Use unknown instead of any when possible
+         - Implement proper error types
+         - Use readonly when appropriate
+
+examples:
+
+- input: |
+  // Bad: Implicit any
+  function process(data) {
+  return data.value;
+  }
+
+  // Good: Explicit typing
+  interface Data {
+  value: string;
+  }
+
+  function process(data: Data): string {
+  return data.value;
+  }
+  output: "Use explicit type definitions instead of implicit any"
+
+- input: |
+  // Bad: Type assertion
+  const value = someValue as string;
+
+  // Good: Type guard
+  function isString(value: unknown): value is string {
+  return typeof value === 'string';
+  }
+
+  if (isString(someValue)) {
+  // value is typed as string here
+  }
+  output: "Use type guards instead of type assertions for runtime type checking"
+
+metadata:
+priority: high
+version: 1.0
+</rule>

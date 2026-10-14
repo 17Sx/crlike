@@ -1,0 +1,370 @@
+---
+description: How to use the realtime system - creating events and handlers
+globs: packages/realtime/src/events/**, apps/realtime/src/handlers/**, apps/web/**/use-*.ts
+alwaysApply: false
+---
+priority: high
+version: 2025.12.07
+---
+
+# Realtime Usage Guide
+
+## Intent
+Practical guide for adding new realtime events, handlers, and integrating with the database.
+
+## Quick Reference
+
+| Direction | Where to Define | Where to Handle | Protocol |
+|-----------|----------------|-----------------|----------|
+| Client → Broker | `packages/realtime/src/events/client-events.ts` | `apps/realtime/src/handlers/` | WebSocket |
+| Server → Broker | `packages/realtime/src/events/server-events.ts` | `apps/realtime/src/handlers/server/` | TCP |
+| Broker → Client | `packages/realtime/src/events/broker-events.ts` | React hooks (`on()`) | WebSocket |
+
+## Step 1: Define Events
+
+### Adding a Client Event (Client → Broker)
+
+```ts
+// packages/realtime/src/events/client-events.ts
+export const clientEvents = {
+  // ... existing events
+
+  "reaction:add": {
+    input: z.object({
+      messageId: z.string(),
+      emoji: z.string(),
+    }),
+  },
+} as const satisfies Record<string, EventDefinition>;
+```
+
+### Adding a Server Event (Server → Broker via TCP)
+
+```ts
+// packages/realtime/src/events/server-events.ts
+export const serverEvents = {
+  // ... existing events
+
+  "user:status-change": {
+    input: z.object({
+      userId: z.string(),
+      status: z.enum(["online", "away", "offline"]),
+    }),
+  },
+} as const satisfies Record<string, EventDefinition>;
+```
+
+### Adding a Broker Event (Broker → Client)
+
+```ts
+// packages/realtime/src/events/broker-events.ts
+export const brokerEvents = {
+  // ... existing events
+
+  "reaction:added": {
+    payload: z.object({
+      messageId: z.string(),
+      emoji: z.string(),
+      user: z.object({ id: z.string(), name: z.string() }),
+    }),
+  },
+} as const satisfies Record<string, PayloadDefinition>;
+```
+
+## Step 2: Create Handlers (Broker)
+
+### Client Handler Structure
+
+Create a new file in `apps/realtime/src/handlers/`:
+
+```ts
+// apps/realtime/src/handlers/reactions/client/add.ts
+import { defineClientHandler } from "@repo/realtime/server";
+import { getClientInfo } from "@/lib/helpers";
+
+export const reactionAddHandler = defineClientHandler<{
+  messageId: string;
+  emoji: string;
+}>(async (ctx, data) => {
+  // ctx.socket - current client socket
+  // ctx.session - authenticated user (or null)
+  // ctx.io - Socket.IO server instance
+
+  const user = getClientInfo(ctx);
+
+  // Broadcast to room (excluding sender)
+  ctx.socket.to(`message:${data.messageId}`).emit("reaction:added", {
+    messageId: data.messageId,
+    emoji: data.emoji,
+    user,
+  });
+});
+```
+
+### Server Handler Structure
+
+```ts
+// apps/realtime/src/handlers/server/server/user-status.ts
+import { defineServerHandler } from "@repo/realtime/server";
+
+export const userStatusChangeHandler = defineServerHandler<{
+  userId: string;
+  status: "online" | "away" | "offline";
+}>(async (ctx, data) => {
+  // ctx.io - Socket.IO server
+
+  // Emit to specific user's room
+  ctx.io.to(`user:${data.userId}`).emit("user:status", { status: data.status });
+});
+```
+
+### Register Handlers
+
+```ts
+// apps/realtime/src/handlers/_app.ts
+import { reactionAddHandler } from "./reactions/client/add";
+import { userStatusChangeHandler } from "./server/server/user-status";
+
+export const clientHandlers = {
+  // ... existing handlers
+  "reaction:add": reactionAddHandler,
+};
+
+export const serverHandlers = {
+  // ... existing handlers
+  "user:status-change": userStatusChangeHandler,
+};
+```
+
+## Step 3: Use in Client (React)
+
+### Setup Provider
+
+```tsx
+// apps/web/app/layout.tsx or specific layout
+import { RealtimeProvider } from "@repo/realtime/client";
+import { getRealtimeUrl } from "@/lib/discovery/realtime";
+
+export default function Layout({ children }) {
+  const realtimeUrl = await getRealtimeUrl();
+
+  return (
+    <RealtimeProvider url={realtimeUrl}>
+      {children}
+    </RealtimeProvider>
+  );
+}
+```
+
+### Emit Events from Client
+
+```tsx
+import { useSocket } from "@repo/realtime/client";
+
+function MessageReactions({ messageId }: { messageId: string }) {
+  const { emit, isConnected } = useSocket();
+
+  const addReaction = (emoji: string) => {
+    emit("reaction:add", { messageId, emoji });
+  };
+
+  return (
+    <button onClick={() => addReaction("👍")} disabled={!isConnected}>
+      👍
+    </button>
+  );
+}
+```
+
+### Listen to Broker Events
+
+```tsx
+import { useSocket } from "@repo/realtime/client";
+import { useEffect, useState } from "react";
+
+function MessageReactions({ messageId }: { messageId: string }) {
+  const { on } = useSocket();
+  const [reactions, setReactions] = useState<Reaction[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = on("reaction:added", (payload) => {
+      if (payload.messageId === messageId) {
+        setReactions((prev) => [...prev, payload]);
+      }
+    });
+
+    return unsubscribe;
+  }, [on, messageId]);
+
+  return <div>{/* render reactions */}</div>;
+}
+```
+
+## Step 4: Emit from Server (oRPC/Next.js)
+
+### Using the Realtime Service
+
+```ts
+// packages/server/src/routers/messages/mutations/add-reaction.ts
+import { realtime } from "@/services/realtime.service";
+
+export const addReactionHandler = protectedProcedure
+  .input(addReactionSchema)
+  .handler(async ({ input, context }) => {
+    // Save to database
+    const reaction = await db.insert(reactions).values({
+      messageId: input.messageId,
+      userId: context.session.user.id,
+      emoji: input.emoji,
+    });
+
+    // Notify via realtime (Server → Broker → Clients)
+    await realtime.emit("notification:send", {
+      userId: messageAuthorId,
+      title: "New reaction",
+      message: `${context.session.user.name} reacted with ${input.emoji}`,
+    });
+
+    return reaction;
+  });
+```
+
+## Database Integration (Broker-side)
+
+### Creating a Database Service
+
+```ts
+// apps/realtime/src/lib/my-feature/database.ts
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import { env } from "../env";
+
+const pool = new Pool({ connectionString: env.DATABASE_URL });
+export const db = drizzle({ client: pool });
+```
+
+### Using Database in Handlers
+
+```ts
+// apps/realtime/src/handlers/reactions/client/add.ts
+import { defineClientHandler } from "@repo/realtime/server";
+import { db } from "@/lib/reactions/database";
+import { reactions } from "@repo/database/schema";
+
+export const reactionAddHandler = defineClientHandler<{
+  messageId: string;
+  emoji: string;
+}>(async (ctx, data) => {
+  if (!ctx.session) {
+    ctx.socket.emit("error", { message: "Authentication required" });
+    return;
+  }
+
+  // Save to database directly from broker
+  await db.insert(reactions).values({
+    messageId: data.messageId,
+    userId: ctx.session.user.id,
+    emoji: data.emoji,
+  });
+
+  // Then broadcast
+  ctx.socket.to(`message:${data.messageId}`).emit("reaction:added", {
+    messageId: data.messageId,
+    emoji: data.emoji,
+    user: { id: ctx.session.user.id, name: ctx.session.user.name },
+  });
+});
+```
+
+### Debounced Persistence (like Yjs documents)
+
+For high-frequency updates, use debounced saves:
+
+```ts
+// apps/realtime/src/lib/feature/operations.ts
+const SAVE_DEBOUNCE_MS = 3000;
+const pendingSaves = new Map<string, NodeJS.Timeout>();
+
+export function scheduleSave(id: string, saveFn: () => Promise<void>) {
+  const existing = pendingSaves.get(id);
+  if (existing) clearTimeout(existing);
+
+  pendingSaves.set(
+    id,
+    setTimeout(async () => {
+      await saveFn();
+      pendingSaves.delete(id);
+    }, SAVE_DEBOUNCE_MS),
+  );
+}
+```
+
+## Handler Context Reference
+
+### Client Handler Context
+
+```ts
+interface ClientHandlerContext {
+  socket: Socket;              // Current client socket
+  session: AuthSession | null; // User session (null if anonymous)
+  io: Server;                  // Socket.IO server instance
+}
+```
+
+### Server Handler Context
+
+```ts
+interface ServerHandlerContext {
+  io: Server;               // Socket.IO server instance
+}
+```
+
+## Common Patterns
+
+### Broadcast to Room
+
+```ts
+// To all in room except sender
+ctx.socket.to(roomId).emit("event", payload);
+
+// To all in room including sender
+ctx.io.to(roomId).emit("event", payload);
+```
+
+### Send to Specific User
+
+```ts
+// Users auto-join their user room on connect
+ctx.io.to(`user:${userId}`).emit("event", payload);
+```
+
+## Folder Structure Convention
+
+```
+apps/realtime/src/handlers/
+├── _app.ts                    # Aggregates all handlers
+├── rooms/                     # Feature: chat rooms
+│   ├── client/                # Client → Broker handlers
+│   │   ├── index.ts
+│   │   ├── join.ts
+│   │   └── message-send.ts
+│   ├── utils/                 # Feature-specific utilities
+│   │   └── state.ts
+│   └── index.ts
+├── documents/                 # Feature: collaborative docs
+│   ├── client/
+│   └── index.ts
+└── server/                    # Server → Broker handlers
+    └── server/
+        ├── index.ts
+        └── notification-send.ts
+```
+
+## Checklist for New Events
+
+1. [ ] Define event schema in `packages/realtime/src/events/`
+2. [ ] Create handler in `apps/realtime/src/handlers/`
+3. [ ] Register handler in `apps/realtime/src/handlers/_app.ts`
+4. [ ] Use in client with `emit()` or `on()`
+5. [ ] (Optional) Use `realtime.emit()` from server
+6. [ ] Run `pnpm checks` to validate types

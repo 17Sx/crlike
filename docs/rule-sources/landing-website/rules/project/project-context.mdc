@@ -1,0 +1,13 @@
+---
+description: Contexte et conventions communes pour la reconstruction d'Agency Website
+alwaysApply: true
+---
+
+# Contexte du projet
+
+Lire et appliquer `AGENTS.md` à la racine du dépôt avant toute intervention.
+Les décisions produit et les questions ouvertes sont dans `docs/decisions.md`.
+
+Les règles techniques de ce dossier complètent ce cadre. Ne pas dupliquer les
+consignes globales ici ni reprendre automatiquement les conventions de l'ancien
+dépôt `agency-website`. Vérifier les exemples techniques contre le code actuel.

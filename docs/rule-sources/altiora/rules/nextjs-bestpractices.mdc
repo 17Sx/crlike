@@ -1,0 +1,110 @@
+---
+alwaysApply: true
+---
+# Next.js Best Practices
+
+Simplified standards for Next.js application development.
+
+<rule>
+name: nextjs_best_practices
+description: Best practices for Next.js applications and routing. Auto-included for TypeScript and TSX files.
+globs: ["**/*.{ts,tsx}"]
+filters:
+  - type: file_extension
+    pattern: "\\.(ts|tsx)$"
+actions:
+  - type: suggest
+    message: |
+      Follow these essential Next.js best practices:
+
+      1. Routing & Components:
+         - Use App Router with route groups for organization
+         - Default to server components, only use 'use client' when needed
+         - Implement loading.tsx and error.tsx for better UX
+
+      2. Performance:
+         - Use built-in components: next/image, next/font, next/link
+         - Leverage server components for direct data fetching
+         - Set appropriate cache options and revalidation strategies
+
+      3. Next.js 15 Updates - CRITICAL CHANGES:
+         - **params and searchParams are now Promises** - must be awaited in server components
+         - Always use async/await with headers(), cookies() and other request APIs
+         - Update authentication flows for async compatibility
+         - Type params as Promise<{key: string}> in component props
+
+examples:
+  - input: |
+      // Bad: Using traditional React Router
+      import { BrowserRouter } from 'react-router-dom'
+
+      // Good: Using Next.js App Router
+      import { useRouter } from 'next/navigation'
+    output: "Use Next.js built-in routing instead of external routing libraries"
+
+  - input: |
+      // Bad: Synchronous headers in Next.js 15
+      import { headers } from 'next/headers'
+
+      export default function Page() {
+        const headersList = headers()
+        // ...
+      }
+
+      // Good: Async headers in Next.js 15
+      import { headers } from 'next/headers'
+
+      export default async function Page() {
+        const headersList = await headers()
+        // ...
+      }
+    output: "Always await headers() in Next.js 15 as per the new async request APIs requirement"
+
+  - input: |
+      // Bad: Synchronous params in Next.js 15
+      interface PageProps {
+        params: { id: string }
+      }
+
+      export default function Page({ params }: PageProps) {
+        const { id } = params
+        // ...
+      }
+
+      // Good: Async params in Next.js 15
+      interface PageProps {
+        params: Promise<{ id: string }>
+      }
+
+      export default async function Page({ params }: PageProps) {
+        const { id } = await params
+        // ...
+      }
+    output: "In Next.js 15, params and searchParams are Promises and must be awaited in server components"
+
+  - input: |
+      // Bad: Synchronous searchParams in Next.js 15
+      interface PageProps {
+        searchParams: { query?: string }
+      }
+
+      export default function Page({ searchParams }: PageProps) {
+        const { query } = searchParams
+        // ...
+      }
+
+      // Good: Async searchParams in Next.js 15
+      interface PageProps {
+        searchParams: Promise<{ query?: string }>
+      }
+
+      export default async function Page({ searchParams }: PageProps) {
+        const { query } = await searchParams
+        // ...
+      }
+    output: "searchParams must also be typed as Promise and awaited in Next.js 15 server components"
+
+metadata:
+  priority: high
+  version: 1.1
+</rule>
