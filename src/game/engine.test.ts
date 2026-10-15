@@ -201,11 +201,11 @@ test("deux simulations identiques donnent le même résultat, sans muter leur é
   assert.equal(JSON.stringify(initial), snapshot);
 });
 
-test("placement exact en deux dimensions dans les deux camps et aux bords", () => {
+test("placement exact en deux dimensions dans son camp et aux bords", () => {
   for (const [x, y] of [
-    [37.25, 18.75],
+    [37.25, 58.75],
     [73.8, 89.4],
-    [0, 0],
+    [0, 52],
     [100, 100],
   ]) {
     const initial = playing();
@@ -222,13 +222,17 @@ test("placement exact en deux dimensions dans les deux camps et aux bords", () =
 });
 
 test("la portée est radiale et les troupes se déplacent horizontalement", () => {
-  const result = deploy(playing(), "player", 0, 60, 22);
+  const state = playing();
+  state.entities = state.entities.map((e) =>
+    e.team === "bot" && e.kind === "tower" && e.x === 75 ? { ...e, y: 78 } : e,
+  );
+  const result = deploy(state, "player", 0, 60, 78);
   assert.ok(result.ok);
   const next = tick(result.state);
   const troop = next.entities.find((e) => e.cardId === "sentinel");
   assert.ok(troop);
   assert.ok(troop.x > 60);
-  assert.equal(troop.y, 22);
+  assert.equal(troop.y, 78);
   assert.equal(
     next.entities.find(
       (e) => e.team === "bot" && e.kind === "tower" && e.x === 25,
@@ -241,12 +245,12 @@ function rangedCombat() {
   let state = playing();
   state.entities = state.entities.map((e) => ({ ...e, cooldownMs: Infinity }));
   state.sides.bot.hand[0] = "turret";
-  const enemy = deploy(state, "bot", 0, 25, 30);
+  const enemy = deploy(state, "bot", 0, 25, 45);
   assert.ok(enemy.ok);
   state = enemy.state;
   state.entities = state.entities.map((e) => ({ ...e, cooldownMs: Infinity }));
   state.sides.player.hand[0] = "archers";
-  const ally = deploy(state, "player", 0, 25, 40);
+  const ally = deploy(state, "player", 0, 25, 60);
   assert.ok(ally.ok);
   return ally.state;
 }
@@ -255,7 +259,7 @@ test("les flèches voyagent avant de blesser, leurs positions sont immuables", (
   const fired = advance(rangedCombat(), 5);
   assert.equal(fired.projectiles.length, 2);
   assert.ok(
-    fired.projectiles.every((p) => p.kind === "arrow" && p.y > 30 && p.y < 40),
+    fired.projectiles.every((p) => p.kind === "arrow" && p.y > 45 && p.y < 60),
   );
   assert.equal(fired.entities.find((e) => e.cardId === "turret")?.hp, 750);
   const snapshot = JSON.stringify(fired);
@@ -326,5 +330,31 @@ test("×2 démarre à 60 secondes exactement pour les deux camps", () => {
         after.sides[team].elixir - before.sides[team].elixir - 100 / 1400,
       ) < 1e-8,
     );
+  }
+});
+
+test("unités et bâtiments refusés dans le camp adverse et la rivière sans coût ni cycle", () => {
+  for (const team of ["player", "bot"] as const) {
+    for (const id of ["sentinel", "turret"] as const) {
+      for (const y of team === "player"
+        ? [0, 25, 49, 50, 51.9]
+        : [48.1, 50, 51, 75, 100]) {
+        const state = playing();
+        state.sides[team].hand[0] = id;
+        const before = JSON.stringify(state);
+        assert.equal(deploy(state, team, 0, 37, y).ok, false);
+        assert.equal(JSON.stringify(state), before);
+      }
+    }
+  }
+});
+
+test("les sorts restent autorisés dans les deux camps et sur la rivière", () => {
+  for (const team of ["player", "bot"] as const) {
+    for (const y of [0, 25, 50, 75, 100]) {
+      const state = playing();
+      state.sides[team].hand[0] = "fireball";
+      assert.equal(deploy(state, team, 0, 37, y).ok, true);
+    }
   }
 });

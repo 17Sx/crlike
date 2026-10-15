@@ -12,7 +12,8 @@ est volontairement simple ; le moteur est indépendant de React et du DOM.
 
 1. Choisir huit cartes dans le deck, puis lancer la partie.
 2. Sélectionner une carte (ou touches 1 à 4), puis cliquer ou toucher un point exact de l'arène.
-   Toutes les cartes peuvent être placées partout, y compris chez l'adversaire.
+   Les unités et bâtiments se placent librement dans ton camp, sous la rivière.
+   Les sorts peuvent viser toute l'arène, y compris le camp adverse.
 3. Détruire le roi adverse, ou obtenir plus de couronnes en trois minutes.
    L'élixir double après une minute. Un compte à rebours et un badge ×2 indiquent ce passage. À égalité, une minute de mort subite ;
    si personne ne prend l'avantage, la partie se termine sur un match nul.

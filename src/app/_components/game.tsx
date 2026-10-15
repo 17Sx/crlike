@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { CARDS, CARD_IDS, DEFAULT_DECK, type CardId } from "@/game/cards";
 import {
   createGame,
+  canPlaceInCamp,
   DOUBLE_ELIXIR_MS,
   crowns,
   deploy,
@@ -33,6 +34,8 @@ export function Game() {
   const selectedId =
     selectedSlot !== null ? game.sides.player.hand[selectedSlot] : undefined;
   const selectedCard = selectedId ? CARDS[selectedId] : undefined;
+  const validAim =
+    !selectedCard || canPlaceInCamp("player", selectedCard.kind, aim.y);
   const remainingMs =
     game.elapsedMs < MATCH_MS
       ? MATCH_MS - game.elapsedMs
@@ -93,7 +96,7 @@ export function Game() {
     setGame({ ...createGame(deck), status: "running" });
     setSelectedSlot(null);
     setMessage(
-      "Sélectionne une carte, puis vise n’importe où dans l’arène. Tu joues en bleu.",
+      "Sélectionne une carte, puis vise un point dans ton camp (les sorts peuvent viser partout). Tu joues en bleu.",
     );
   }
 
@@ -208,10 +211,15 @@ export function Game() {
           {selectedCard && running && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute z-30 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-dashed border-violet-700 bg-violet-100/80 font-bold text-violet-900"
+              className={cn(
+                "pointer-events-none absolute z-30 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-dashed font-bold",
+                validAim
+                  ? "border-violet-700 bg-violet-100/80 text-violet-900"
+                  : "border-red-700 bg-red-100/80 text-red-900",
+              )}
               style={{ left: `${aim.x}%`, top: `${aim.y}%` }}
             >
-              {selectedCard.symbol}
+              {validAim ? selectedCard.symbol : "×"}
             </div>
           )}
           {game.entities.map((entity) => {
@@ -408,7 +416,7 @@ export function Game() {
                 onClick={() => {
                   setSelectedSlot(slot);
                   setMessage(
-                    `${CARDS[id].name} : ${CARDS[id].description} Vise n’importe où dans l’arène.`,
+                    `${CARDS[id].name} : ${CARDS[id].description} Choisis un point${CARDS[id].kind === "spell" ? " dans l’arène." : " dans ton camp, sous la rivière."}`,
                   );
                 }}
               >
@@ -504,10 +512,10 @@ export function Game() {
         <div className="space-y-2 text-sm text-muted-foreground">
           <Badge variant="outline">Prototype local contre bot</Badge>
           <p id="placement-help">
-            Sélectionne une carte (ou touches 1 à 4), puis clique ou touche
-            n’importe quel point de l’arène, même chez l’adversaire. Au clavier
-            : Tab vers l’arène, flèches pour viser, Maj pour avancer plus vite
-            et Entrée pour placer. Échap annule.
+            Sélectionne une carte (ou touches 1 à 4), puis clique ou touche un
+            point dans ton camp, sous la rivière. Les sorts peuvent viser toute
+            l’arène. Au clavier : Tab vers l’arène, flèches pour viser, Maj pour
+            avancer plus vite et Entrée pour placer. Échap annule.
           </p>
           <p>
             Unités en bleu, bot en rouge. Les attaques à distance et les sorts

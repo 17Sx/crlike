@@ -88,3 +88,12 @@ l'élixir double au bout d'une minute de jeu.
 
 Ces choix remplacent les restrictions de placement, le ciblage par voie et le
 seuil de deux minutes du prototype initial. Le moteur reste pur et déterministe.
+
+## Correction du placement par camp
+
+Après clarification de l'utilisateur, « placement libre » concerne les coordonnées
+à l'intérieur de son camp. Les unités et bâtiments du joueur nécessitent y >= 52,
+ceux du bot y <= 48, en excluant la rivière. Les sorts peuvent viser toute l'arène.
+Le moteur refuse un placement interdit avant toute dépense d'élixir ou rotation
+de main ; le viseur devient rouge dans les zones interdites. Cette décision
+remplace l'autorisation de placement en camp adverse décrite ci-dessus.

@@ -188,6 +188,14 @@ function settle(state: GameState): void {
 export type DeployResult =
   { ok: true; state: GameState } | { ok: false; error: string };
 
+export function canPlaceInCamp(
+  team: Team,
+  kind: "troop" | "building" | "spell",
+  y: number,
+): boolean {
+  return kind === "spell" || (team === "player" ? y >= 52 : y <= 48);
+}
+
 export function deploy(
   state: GameState,
   team: Team,
@@ -206,6 +214,12 @@ export function deploy(
     )
   )
     return { ok: false, error: "Position invalide." };
+  if (!canPlaceInCamp(team, card.kind, y))
+    return {
+      ok: false,
+      error:
+        "Place tes unités et bâtiments dans ton camp, sous la rivière. Seuls les sorts peuvent viser le camp adverse.",
+    };
   if (state.sides[team].elixir < card.cost)
     return { ok: false, error: "Pas assez d’élixir." };
   const next = copyGame(state);
