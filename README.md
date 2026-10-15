@@ -4,28 +4,33 @@ Jeu web de stratégie en temps réel inspiré de Clash Royale. Le développement
 avance par étapes : gameplay d'abord, visuel ensuite, avec une cible V1 jouable
 comportant dix cartes différentes.
 
-Le prototype local est jouable contre un bot : deux voies, trois tours par camp,
+Le prototype local est jouable contre un bot : placement libre, trois tours par camp,
 élixir, deck de huit cartes parmi dix et main cyclique de quatre cartes. Le visuel
 est volontairement simple ; le moteur est indépendant de React et du DOM.
 
 ## Jouer
 
 1. Choisir huit cartes dans le deck, puis lancer la partie.
-2. Sélectionner une carte (ou touches 1 à 4), puis cliquer une zone de l'arène.
-   Les unités et bâtiments se déploient dans ton camp ; les sorts visent les deux camps.
+2. Sélectionner une carte (ou touches 1 à 4), puis cliquer ou toucher un point exact de l'arène.
+   Toutes les cartes peuvent être placées partout, y compris chez l'adversaire.
 3. Détruire le roi adverse, ou obtenir plus de couronnes en trois minutes.
-   L'élixir double après deux minutes. À égalité, une minute de mort subite ;
+   L'élixir double après une minute. Un compte à rebours et un badge ×2 indiquent ce passage. À égalité, une minute de mort subite ;
    si personne ne prend l'avantage, la partie se termine sur un match nul.
 
 Pause/reprise, abandon et nouvelle partie sont disponibles. Changer d'onglet
 met automatiquement en pause. La partie n'est pas sauvegardée au rechargement.
-Tab et Entrée permettent de choisir une zone au clavier, Échap annule la sélection.
+Tab permet de focaliser l’arène, les flèches déplacent la visée (Maj accélère),
+Entrée place la carte et Échap annule la sélection.
 
 Cartes : Sentinelle, Éclaireuses, Colosse, Essaim, Lancier, Bombardier, Coureur,
 Météore, Salve et Tourelle. Le bot utilise un deck fixe et un cycle déterministe.
 
-Il s'agit d'une simulation locale à deux voies, sans multijoueur, serveur de combat,
-pathfinding libre, collisions physiques, projectiles ni équilibrage final.
+Les unités se déplacent en deux dimensions vers la cible admissible la plus proche.
+Les tirs à distance et les sorts ont des projectiles visibles, avec dégâts à l’impact.
+Les sorts et bombes ont une zone circulaire ; les dégâts des sorts sont réduits sur les tours.
+
+Il s'agit d'une simulation locale, sans multijoueur, serveur de combat,
+obstacles, collisions physiques ni équilibrage final.
 
 ## Démarrer
 

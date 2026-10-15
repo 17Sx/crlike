@@ -3,6 +3,7 @@ import test from "node:test";
 import { CARD_IDS, DEFAULT_DECK } from "./cards";
 import {
   createGame,
+  DOUBLE_ELIXIR_MS,
   crowns,
   deploy,
   MATCH_MS,
@@ -19,7 +20,7 @@ function advance(state: GameState, count: number) {
   return state;
 }
 function play(state: GameState, slot = 0, y = 60) {
-  const result = deploy(state, "player", slot, "left", y);
+  const result = deploy(state, "player", slot, 25, y);
   assert.equal(result.ok, true);
   return result.state;
 }
@@ -41,31 +42,31 @@ test("déploiement immuable, coût et cycle de la main", () => {
   assert.equal(next.entities.length, 7);
 });
 
-test("refuse élixir insuffisant, zone adverse, index et coordonnées invalides", () => {
+test("refuse élixir insuffisant, index et coordonnées invalides", () => {
   const state = playing();
   state.sides.player.elixir = 0;
-  assert.equal(deploy(state, "player", 0, "left", 60).ok, false);
+  assert.equal(deploy(state, "player", 0, 25, 60).ok, false);
   state.sides.player.elixir = 10;
-  for (const y of [NaN, Infinity, -1, 35, 99])
-    assert.equal(deploy(state, "player", 0, "left", y).ok, false);
+  for (const y of [NaN, Infinity, -1, 101])
+    assert.equal(deploy(state, "player", 0, 25, y).ok, false);
   for (const slot of [-1, 0.5, 7])
-    assert.equal(deploy(state, "player", slot, "left", 60).ok, false);
-  assert.equal(deploy(createGame(), "player", 0, "left", 60).ok, false);
+    assert.equal(deploy(state, "player", slot, 25, 60).ok, false);
+  assert.equal(deploy(createGame(), "player", 0, 25, 60).ok, false);
 });
 
 test("pause et fin figent simulation et déploiement", () => {
   for (const status of ["ready", "paused", "finished"] as const) {
     const state = { ...playing(), status };
     assert.equal(tick(state), state);
-    assert.equal(deploy(state, "player", 0, "left", 60).ok, false);
+    assert.equal(deploy(state, "player", 0, 25, 60).ok, false);
   }
 });
 
-test("régénération plafonnée à 10, doublée après deux minutes", () => {
+test("régénération plafonnée à 10, doublée après une minute", () => {
   const base = playing();
   base.sides.player.elixir = 0;
   const normal = tick(base).sides.player.elixir;
-  const late = { ...base, elapsedMs: 120_000 };
+  const late = { ...base, elapsedMs: DOUBLE_ELIXIR_MS - 100 };
   assert.ok(Math.abs(tick(late).sides.player.elixir - normal * 2) < 0.00001);
   assert.equal(advance(playing(), 1000).sides.player.elixir, 10);
 });
@@ -84,7 +85,7 @@ test("le bot déploie et le combat endommage une tour sans intervention UI", () 
 
 test("les troupes se combattent avant d'atteindre les tours", () => {
   const state = play(playing());
-  const result = deploy(state, "bot", 0, "left", 45);
+  const result = deploy(state, "bot", 0, 25, 45);
   assert.ok(result.ok);
   const after = advance(result.state, 30);
   assert.ok(
@@ -110,7 +111,7 @@ test("le colosse ignore les troupes et le coureur avance plus vite", () => {
   );
   const unit = slow.entities.find((e) => e.cardId === "colossus");
   assert.ok(unit);
-  const result = deploy(slow, "bot", 0, "left", 45);
+  const result = deploy(slow, "bot", 0, 25, 45);
   assert.ok(result.ok);
   const after = advance(result.state, 30);
   assert.equal(after.entities.find((e) => e.cardId === "sentinel")?.hp, 650);
@@ -119,10 +120,14 @@ test("le colosse ignore les troupes et le coureur avance plus vite", () => {
 test("les sorts infligent des dégâts de zone sans toucher les alliés et réduisent les dégâts aux tours", () => {
   let state = playing();
   state.sides.player.hand[0] = "fireball";
-  const spawned = deploy(state, "bot", 3, "left", 22);
+  const spawned = deploy(state, "bot", 3, 25, 22);
   assert.ok(spawned.ok);
   state = spawned.state;
-  const next = play(state, 0, 22);
+  state.entities = state.entities.map((e) =>
+    e.kind === "troop" ? { ...e, stats: { ...e.stats, speed: 0 } } : e,
+  );
+  const launched = play(state, 0, 22);
+  const next = advance(launched, 15);
   assert.equal(next.entities.filter((e) => e.cardId === "swarm").length, 0);
   assert.equal(
     next.entities.find(
@@ -140,9 +145,9 @@ test("le bombardier blesse plusieurs ennemis et la tourelle expire", () => {
   let state = playing();
   state.sides.player.hand[0] = "bomber";
   state = play(state, 0, 56);
-  const spawned = deploy(state, "bot", 3, "left", 44);
+  const spawned = deploy(state, "bot", 3, 25, 44);
   assert.ok(spawned.ok);
-  const after = advance(spawned.state, 5);
+  const after = advance(spawned.state, 10);
   assert.equal(after.entities.filter((e) => e.cardId === "swarm").length, 0);
   const turret = playing();
   turret.sides.player.hand[0] = "turret";
@@ -194,4 +199,132 @@ test("deux simulations identiques donnent le même résultat, sans muter leur é
   const snapshot = JSON.stringify(initial);
   assert.deepEqual(advance(initial, 800), advance(initial, 800));
   assert.equal(JSON.stringify(initial), snapshot);
+});
+
+test("placement exact en deux dimensions dans les deux camps et aux bords", () => {
+  for (const [x, y] of [
+    [37.25, 18.75],
+    [73.8, 89.4],
+    [0, 0],
+    [100, 100],
+  ]) {
+    const initial = playing();
+    const result = deploy(initial, "player", 0, x!, y!);
+    assert.ok(result.ok);
+    const troop = result.state.entities.find((e) => e.cardId === "sentinel");
+    assert.equal(troop?.x, x);
+    assert.equal(troop?.y, y);
+    assert.equal(result.state.sides.player.elixir, 2);
+  }
+  for (const coordinate of [NaN, Infinity, -1, 101]) {
+    assert.equal(deploy(playing(), "player", 0, coordinate, 50).ok, false);
+  }
+});
+
+test("la portée est radiale et les troupes se déplacent horizontalement", () => {
+  const result = deploy(playing(), "player", 0, 60, 22);
+  assert.ok(result.ok);
+  const next = tick(result.state);
+  const troop = next.entities.find((e) => e.cardId === "sentinel");
+  assert.ok(troop);
+  assert.ok(troop.x > 60);
+  assert.equal(troop.y, 22);
+  assert.equal(
+    next.entities.find(
+      (e) => e.team === "bot" && e.kind === "tower" && e.x === 25,
+    )?.hp,
+    1800,
+  );
+});
+
+function rangedCombat() {
+  let state = playing();
+  state.entities = state.entities.map((e) => ({ ...e, cooldownMs: Infinity }));
+  state.sides.bot.hand[0] = "turret";
+  const enemy = deploy(state, "bot", 0, 25, 30);
+  assert.ok(enemy.ok);
+  state = enemy.state;
+  state.entities = state.entities.map((e) => ({ ...e, cooldownMs: Infinity }));
+  state.sides.player.hand[0] = "archers";
+  const ally = deploy(state, "player", 0, 25, 40);
+  assert.ok(ally.ok);
+  return ally.state;
+}
+
+test("les flèches voyagent avant de blesser, leurs positions sont immuables", () => {
+  const fired = advance(rangedCombat(), 5);
+  assert.equal(fired.projectiles.length, 2);
+  assert.ok(
+    fired.projectiles.every((p) => p.kind === "arrow" && p.y > 30 && p.y < 40),
+  );
+  assert.equal(fired.entities.find((e) => e.cardId === "turret")?.hp, 750);
+  const snapshot = JSON.stringify(fired);
+  const hit = advance(fired, 3);
+  assert.equal(JSON.stringify(fired), snapshot);
+  assert.equal(hit.entities.find((e) => e.cardId === "turret")?.hp, 640);
+  assert.equal(hit.projectiles.length, 0);
+});
+
+test("un projectile survit au tireur mais disparaît si la cible meurt", () => {
+  const fired = advance(rangedCombat(), 5);
+  const withoutShooter = {
+    ...fired,
+    entities: fired.entities.filter((e) => e.cardId !== "archers"),
+  };
+  assert.equal(
+    advance(withoutShooter, 3).entities.find((e) => e.cardId === "turret")?.hp,
+    640,
+  );
+  const withoutTarget = {
+    ...withoutShooter,
+    entities: withoutShooter.entities.filter((e) => e.cardId !== "turret"),
+  };
+  assert.equal(tick(withoutTarget).projectiles.length, 0);
+  const paused: GameState = { ...fired, status: "paused" };
+  assert.equal(tick(paused), paused);
+});
+
+test("les sorts suivent la position choisie et ne blessent pas avant l’impact", () => {
+  const state = playing();
+  state.sides.player.hand[0] = "fireball";
+  const result = deploy(state, "player", 0, 25, 22);
+  assert.ok(result.ok);
+  assert.equal(result.state.projectiles[0]?.targetX, 25);
+  assert.equal(result.state.projectiles[0]?.targetY, 22);
+  assert.equal(
+    result.state.entities.find(
+      (e) => e.team === "bot" && e.kind === "tower" && e.x === 25,
+    )?.hp,
+    1800,
+  );
+  const hit = advance(result.state, 15);
+  assert.equal(
+    hit.entities.find(
+      (e) => e.team === "bot" && e.kind === "tower" && e.x === 25,
+    )?.hp,
+    1667,
+  );
+  assert.equal(
+    hit.entities.find(
+      (e) => e.team === "bot" && e.kind === "tower" && e.x === 75,
+    )?.hp,
+    1800,
+  );
+});
+
+test("×2 démarre à 60 secondes exactement pour les deux camps", () => {
+  const state = playing();
+  state.elapsedMs = DOUBLE_ELIXIR_MS - 200;
+  state.sides.player.elixir = 0;
+  state.sides.bot.elixir = 0;
+  const before = tick(state);
+  const after = tick(before);
+  for (const team of ["player", "bot"] as const) {
+    assert.ok(Math.abs(before.sides[team].elixir - 100 / 2800) < 1e-8);
+    assert.ok(
+      Math.abs(
+        after.sides[team].elixir - before.sides[team].elixir - 100 / 1400,
+      ) < 1e-8,
+    );
+  }
 });

@@ -6,27 +6,28 @@ import { Badge } from "@/components/ui/badge";
 import { CARDS, CARD_IDS, DEFAULT_DECK, type CardId } from "@/game/cards";
 import {
   createGame,
+  DOUBLE_ELIXIR_MS,
   crowns,
   deploy,
   MATCH_MS,
   OVERTIME_MS,
   STEP_MS,
   tick,
-  type Lane,
 } from "@/game/engine";
 import { cn } from "@/lib/utils";
-
-const ZONES = Array.from({ length: 16 }, (_, index) => ({
-  lane: (index % 2 === 0 ? "left" : "right") as Lane,
-  y: (Math.floor(index / 2) + 0.5) * 12.5,
-}));
 
 export function Game() {
   const [deck, setDeck] = useState<CardId[]>([...DEFAULT_DECK]);
   const [game, setGame] = useState(createGame);
+  const [aim, setAim] = useState({ x: 50, y: 60 });
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [message, setMessage] = useState(
     "Choisis 8 cartes, puis lance la partie.",
+  );
+  const doubleElixir = game.elapsedMs >= DOUBLE_ELIXIR_MS;
+  const doubleIn = Math.max(
+    0,
+    Math.ceil((DOUBLE_ELIXIR_MS - game.elapsedMs) / 1000),
   );
   const running = game.status === "running";
   const selectedId =
@@ -71,12 +72,12 @@ export function Game() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [running]);
 
-  function handleDeploy(lane: Lane, y: number) {
+  function handleDeploy(x: number, y: number) {
     if (selectedSlot === null) {
       setMessage("Sélectionne une carte de ta main avant de viser l’arène.");
       return;
     }
-    const result = deploy(game, "player", selectedSlot, lane, y);
+    const result = deploy(game, "player", selectedSlot, x, y);
     if (!result.ok) {
       setMessage(result.error);
       return;
@@ -84,7 +85,7 @@ export function Game() {
     setGame(result.state);
     setSelectedSlot(null);
     setMessage(
-      `${selectedCard?.name} joué${selectedCard?.kind === "spell" ? "" : " dans la voie " + (lane === "left" ? "gauche" : "droite")}.`,
+      `${selectedCard?.name} joué à la position ${Math.round(x)}, ${Math.round(y)}.`,
     );
   }
 
@@ -92,7 +93,7 @@ export function Game() {
     setGame({ ...createGame(deck), status: "running" });
     setSelectedSlot(null);
     setMessage(
-      "Sélectionne une carte, puis une zone de l’arène. Tu joues en bleu.",
+      "Sélectionne une carte, puis vise n’importe où dans l’arène. Tu joues en bleu.",
     );
   }
 
@@ -114,7 +115,7 @@ export function Game() {
             <span className="block font-sans text-xs text-muted-foreground">
               {game.elapsedMs >= MATCH_MS
                 ? "Mort subite"
-                : game.elapsedMs >= 120_000
+                : doubleElixir
                   ? "Élixir ×2"
                   : "Temps normal"}
             </span>
@@ -135,50 +136,93 @@ export function Game() {
             <span className="absolute left-[18%] h-full w-[14%] bg-amber-200" />
             <span className="absolute right-[18%] h-full w-[14%] bg-amber-200" />
           </div>
-          <div className="absolute inset-0 grid grid-cols-2 grid-rows-8">
-            {ZONES.map(({ lane, y }) => {
-              const allowed =
-                selectedCard?.kind === "spell" || (y >= 55 && y <= 88);
-              return (
-                <button
-                  key={`${lane}-${y}`}
-                  type="button"
-                  aria-label={`${lane === "left" ? "Voie gauche" : "Voie droite"}, zone ${Math.floor(y / 12.5) + 1}${y < 50 ? ", camp adverse" : ", ton camp"}`}
-                  disabled={!running}
-                  onClick={() => handleDeploy(lane, y)}
-                  className={cn(
-                    "z-10 outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-600",
-                    running &&
-                      selectedCard &&
-                      allowed &&
-                      "cursor-crosshair border border-dashed border-blue-400/50 hover:bg-blue-300/30",
-                    running && selectedCard && !allowed && "cursor-not-allowed",
-                  )}
-                />
+          <button
+            type="button"
+            aria-label="Placer la carte dans l’arène"
+            aria-describedby="placement-help"
+            disabled={!running}
+            onPointerMove={(event) => {
+              if (!selectedCard) return;
+              const bounds = event.currentTarget.getBoundingClientRect();
+              setAim({
+                x: Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    ((event.clientX - bounds.left) / bounds.width) * 100,
+                  ),
+                ),
+                y: Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    ((event.clientY - bounds.top) / bounds.height) * 100,
+                  ),
+                ),
+              });
+            }}
+            onClick={(event) => {
+              if (event.detail === 0) {
+                handleDeploy(aim.x, aim.y);
+                return;
+              }
+              const bounds = event.currentTarget.getBoundingClientRect();
+              handleDeploy(
+                Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    ((event.clientX - bounds.left) / bounds.width) * 100,
+                  ),
+                ),
+                Math.max(
+                  0,
+                  Math.min(
+                    100,
+                    ((event.clientY - bounds.top) / bounds.height) * 100,
+                  ),
+                ),
               );
-            })}
-          </div>
+            }}
+            onKeyDown={(event) => {
+              const movement = event.shiftKey ? 10 : 2;
+              const directions: Record<string, { x: number; y: number }> = {
+                ArrowLeft: { x: -movement, y: 0 },
+                ArrowRight: { x: movement, y: 0 },
+                ArrowUp: { x: 0, y: -movement },
+                ArrowDown: { x: 0, y: movement },
+              };
+              const direction = directions[event.key];
+              if (!direction) return;
+              event.preventDefault();
+              setAim((previous) => ({
+                x: Math.max(0, Math.min(100, previous.x + direction.x)),
+                y: Math.max(0, Math.min(100, previous.y + direction.y)),
+              }));
+            }}
+            className={cn(
+              "absolute inset-0 z-10 outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-blue-600",
+              selectedCard && running && "cursor-crosshair",
+            )}
+          />
+          {selectedCard && running && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute z-30 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-dashed border-violet-700 bg-violet-100/80 font-bold text-violet-900"
+              style={{ left: `${aim.x}%`, top: `${aim.y}%` }}
+            >
+              {selectedCard.symbol}
+            </div>
+          )}
           {game.entities.map((entity) => {
             const isStructure =
               entity.kind === "tower" || entity.kind === "king";
-            const siblings = game.entities.filter(
-              (e) =>
-                e.team === entity.team &&
-                e.lane === entity.lane &&
-                e.cardId === entity.cardId &&
-                Math.abs(e.y - entity.y) < 3,
-            );
-            const offset = isStructure
-              ? 0
-              : (siblings.findIndex((e) => e.id === entity.id) -
-                  (siblings.length - 1) / 2) *
-                5;
             return (
               <div
                 key={entity.id}
                 aria-hidden="true"
                 style={{
-                  left: `${(entity.kind === "king" ? 50 : entity.lane === "left" ? 25 : 75) + offset}%`,
+                  left: `${entity.x}%`,
                   top: `${entity.y}%`,
                 }}
                 className={cn(
@@ -227,12 +271,43 @@ export function Game() {
               </div>
             );
           })}
+          {game.projectiles.map((projectile) => (
+            <div
+              key={projectile.id}
+              aria-hidden="true"
+              data-projectile={projectile.kind}
+              className={cn(
+                "pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center transition-[left,top] duration-100 ease-linear motion-reduce:transition-none",
+                projectile.kind === "arrow"
+                  ? "text-lg font-bold"
+                  : "h-3 w-3 rounded-full border-2 shadow-sm",
+                projectile.kind === "spell" || projectile.kind === "bomb"
+                  ? "border-orange-700 bg-orange-400 shadow-orange-300"
+                  : projectile.team === "player"
+                    ? "border-blue-800 bg-blue-400 text-blue-800"
+                    : "border-red-800 bg-red-400 text-red-800",
+              )}
+              style={{
+                left: `${projectile.x}%`,
+                top: `${projectile.y}%`,
+                ...(projectile.kind === "arrow"
+                  ? {
+                      rotate: `${(Math.atan2(projectile.targetY - projectile.y, projectile.targetX - projectile.x) * 180) / Math.PI}deg`,
+                    }
+                  : {}),
+              }}
+            >
+              {projectile.kind === "arrow" ? "➤" : null}
+            </div>
+          ))}
           {game.effect && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute z-30 h-20 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-orange-500 bg-orange-300/60"
+              className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-orange-500 bg-orange-300/60"
               style={{
-                left: game.effect.lane === "left" ? "25%" : "75%",
+                left: `${game.effect.x}%`,
+                width: `${game.effect.radius * 2}%`,
+                height: `${game.effect.radius * 2}%`,
                 top: `${game.effect.y}%`,
               }}
             />
@@ -292,11 +367,30 @@ export function Game() {
 
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="font-medium text-violet-700">Élixir</span>
+            <span className="flex items-center gap-2 font-medium text-violet-700">
+              Élixir
+              <span
+                role="status"
+                aria-live="polite"
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-xs font-bold",
+                  doubleElixir
+                    ? "bg-violet-600 text-white"
+                    : "bg-violet-100 text-violet-900",
+                )}
+              >
+                {doubleElixir ? "ÉLIXIR ×2" : "ÉLIXIR ×1"}
+              </span>
+            </span>
             <span className="font-mono tabular-nums">
               {game.sides.player.elixir.toFixed(1)} / 10
             </span>
           </div>
+          {!doubleElixir && (
+            <p className="text-xs text-muted-foreground">
+              ×2 dans {doubleIn} s (après 1 minute de jeu)
+            </p>
+          )}
           <progress
             className="h-3 w-full accent-violet-600"
             max={10}
@@ -314,7 +408,7 @@ export function Game() {
                 onClick={() => {
                   setSelectedSlot(slot);
                   setMessage(
-                    `${CARDS[id].name} : ${CARDS[id].description} Choisis une zone${CARDS[id].kind === "spell" ? "." : " dans ton camp."}`,
+                    `${CARDS[id].name} : ${CARDS[id].description} Vise n’importe où dans l’arène.`,
                   );
                 }}
               >
@@ -409,17 +503,18 @@ export function Game() {
         </div>
         <div className="space-y-2 text-sm text-muted-foreground">
           <Badge variant="outline">Prototype local contre bot</Badge>
-          <p>
-            Sélectionne une carte (ou touches 1 à 4), puis clique une zone. Au
-            clavier, Tab et Entrée permettent de viser. Échap annule la
-            sélection.
+          <p id="placement-help">
+            Sélectionne une carte (ou touches 1 à 4), puis clique ou touche
+            n’importe quel point de l’arène, même chez l’adversaire. Au clavier
+            : Tab vers l’arène, flèches pour viser, Maj pour avancer plus vite
+            et Entrée pour placer. Échap annule.
           </p>
           <p>
-            Unités en bleu, bot en rouge. Deux voies, trois tours par camp. Les
-            sorts peuvent viser les deux camps.
+            Unités en bleu, bot en rouge. Les attaques à distance et les sorts
+            ont des projectiles visibles ; les dégâts sont appliqués à l’impact.
           </p>
           <p>
-            3 minutes, élixir doublé après 2 minutes, puis 1 minute de mort
+            3 minutes, élixir doublé après 1 minute, puis 1 minute de mort
             subite en cas d’égalité. À égalité finale : match nul.
           </p>
           <p>
