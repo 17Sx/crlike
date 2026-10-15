@@ -62,3 +62,38 @@ de tester immédiatement une partie et reste réversible pour la suite.
 Le prototype est destiné à valider les interactions et le rythme. Le rendu, la
 persistance, le multijoueur, la finesse du déplacement et l'équilibrage restent
 à travailler dans les prochaines étapes.
+
+## 2026-10-15 : placement libre, projectiles et élixir ×2
+
+Demande explicite : placer les cartes partout, voir les projectiles et activer
+l'élixir double au bout d'une minute de jeu.
+
+- Le placement utilise des coordonnées x/y continues entre 0 et 100, sans
+  restriction de camp, pour toutes les cartes. Clic et toucher visent le point
+  exact ; flèches et Entrée fournissent une alternative au clavier.
+- Les unités se déplacent dans le plan vers la cible admissible la plus proche.
+  Le roi peut être ciblé directement si c'est la cible la plus proche. Les voies
+  restent des repères visuels et de déploiement du bot, sans limiter le combat.
+  La rivière est décorative : pas de navigation autour d'obstacles à cette étape.
+- Flèches des Éclaireuses, boulets des tours et Tourelles, bombes du Bombardier
+  et sorts suivent un trajet. Le moteur applique les dégâts seulement à l'impact.
+  Les tirs suivent leur cible ; les sorts visent une position fixe. Un tir survit
+  à son tireur, mais disparaît si sa cible est déjà morte. Pause et fin de partie
+  figent aussi les projectiles. Les explosions utilisent une distance radiale 2D.
+- Le seuil partagé `DOUBLE_ELIXIR_MS` vaut 60 000 ms. La régénération des deux
+  camps et le badge ×2 utilisent ce seuil ; un compte à rebours indique l'attente.
+  Le chronomètre de partie reste de trois minutes, puis une minute de prolongation.
+- PR dédiée depuis `codex/free-placement-projectiles` vers `dev`, la PR initiale
+  `dev` vers `main` étant encore ouverte. Aucune fusion automatique.
+
+Ces choix remplacent les restrictions de placement, le ciblage par voie et le
+seuil de deux minutes du prototype initial. Le moteur reste pur et déterministe.
+
+## Correction du placement par camp
+
+Après clarification de l'utilisateur, « placement libre » concerne les coordonnées
+à l'intérieur de son camp. Les unités et bâtiments du joueur nécessitent y >= 52,
+ceux du bot y <= 48, en excluant la rivière. Les sorts peuvent viser toute l'arène.
+Le moteur refuse un placement interdit avant toute dépense d'élixir ou rotation
+de main ; le viseur devient rouge dans les zones interdites. Cette décision
+remplace l'autorisation de placement en camp adverse décrite ci-dessus.

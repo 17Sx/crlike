@@ -4,6 +4,7 @@ export interface UnitStats {
   range: number;
   speed: number;
   attackMs: number;
+  projectileSpeed: number;
   count: number;
   splash: number;
   targets: "all" | "buildings";
@@ -26,6 +27,7 @@ const melee: UnitStats = {
   range: 3,
   speed: 7,
   attackMs: 1000,
+  projectileSpeed: 0,
   count: 1,
   splash: 0,
   targets: "all",
@@ -47,7 +49,15 @@ export const CARDS = {
     cost: 3,
     kind: "troop",
     description: "Deux tireuses à distance, fragiles.",
-    stats: { ...melee, hp: 220, damage: 55, range: 17, speed: 6, count: 2 },
+    stats: {
+      ...melee,
+      hp: 220,
+      damage: 55,
+      range: 17,
+      speed: 6,
+      count: 2,
+      projectileSpeed: 50,
+    },
   },
   colossus: {
     name: "Colosse",
@@ -94,6 +104,7 @@ export const CARDS = {
       speed: 6,
       attackMs: 1500,
       splash: 7,
+      projectileSpeed: 35,
     },
   },
   runner: {
@@ -144,6 +155,7 @@ export const CARDS = {
       range: 20,
       speed: 0,
       lifetimeMs: 30_000,
+      projectileSpeed: 55,
     },
   },
 } as const satisfies Record<string, CardDefinition>;
